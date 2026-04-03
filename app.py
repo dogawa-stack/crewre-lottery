@@ -15,7 +15,7 @@ from collections import defaultdict
 LOTTERY_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, LOTTERY_DIR)
 
-from lottery import load_shopify, load_applicants, run_lottery, SLOT_DEFS
+from lottery import load_shopify, load_applicants, run_lottery, SLOT_DEFS, build_slot_defs, build_time_zone_map, DEFAULT_DAYS, DEFAULT_SLOT_TIMES
 from shopify_tag import get_customer_by_email, add_tag, SHOP, TAG
 from email_templates import (
     SUBJECT_WINNER,     BODY_WINNER,
@@ -54,6 +54,10 @@ def default_state():
         'url_fields': {
             'attendance_url': '', 'attendance_deadline': '',
             'presale_url': '', 'presale_deadline': '', 'survey_url': '',
+        },
+        'event_config': {
+            'days': DEFAULT_DAYS,
+            'slot_times': DEFAULT_SLOT_TIMES,
         },
     }
 
@@ -134,11 +138,16 @@ def run_lottery_with_settings(shopify_path, paperform_path, slot_capacity_overri
 
     # 設定を一時的に反映
     s = st.session_state.settings
-    orig_alloc    = dict(_lot.ALLOCATION)
-    orig_capacity = _lot.CAPACITY_PER_SLOT
+    ec = st.session_state.event_config
+    orig_alloc     = dict(_lot.ALLOCATION)
+    orig_capacity  = _lot.CAPACITY_PER_SLOT
+    orig_slot_defs = dict(_lot.SLOT_DEFS)
+    orig_tz_map    = dict(_lot.TIME_ZONE_MAP)
 
-    _lot.ALLOCATION = {'VIP': s['vip'], '潜在': s['latent'], '新規': s['new']}
+    _lot.ALLOCATION    = {'VIP': s['vip'], '潜在': s['latent'], '新規': s['new']}
     _lot.CAPACITY_PER_SLOT = s['capacity']
+    _lot.SLOT_DEFS     = build_slot_defs(ec['days'], ec['slot_times'])
+    _lot.TIME_ZONE_MAP = build_time_zone_map(ec['days'], ec['slot_times'])
 
     if slot_capacity_override:
         # 二次抽選: slot_total を空き枠に制限
@@ -165,6 +174,8 @@ def run_lottery_with_settings(shopify_path, paperform_path, slot_capacity_overri
     # 元に戻す
     _lot.ALLOCATION        = orig_alloc
     _lot.CAPACITY_PER_SLOT = orig_capacity
+    _lot.SLOT_DEFS         = orig_slot_defs
+    _lot.TIME_ZONE_MAP     = orig_tz_map
     if slot_capacity_override:
         _lot.SLOT_DEFS = orig_slot_defs
 
@@ -196,6 +207,25 @@ st.divider()
 
 if cur == 1:
     st.header('① 一次抽選')
+
+    # イベント設定
+    with st.expander('📅 イベント設定（日程・時間帯）', expanded=False):
+        ec = st.session_state.event_config
+        st.caption('開催日（1行1日）')
+        days_text = st.text_area('開催日', value='\n'.join(ec['days']), height=80, label_visibility='collapsed')
+        st.caption('時間帯（1行1スロット）')
+        times_text = st.text_area('時間帯', value='\n'.join(ec['slot_times']), height=200, label_visibility='collapsed')
+        if st.button('設定を保存', key='save_event'):
+            days = [d.strip() for d in days_text.splitlines() if d.strip()]
+            times = [t.strip() for t in times_text.splitlines() if t.strip()]
+            st.session_state.event_config = {'days': days, 'slot_times': times}
+            persist()
+            # プレビュー
+            preview = build_time_zone_map(days, times)
+            st.success(f'保存しました（{len(days)}日 × {len(times)}枠 = {len(days)*len(times)}スロット）')
+            for k, v in preview.items():
+                if v != list(range(1, len(days)*len(times)+1)):
+                    st.caption(f'{k}: {len(v)}枠')
 
     # 設定パネル
     with st.expander('⚙️ 抽選設定', expanded=False):

@@ -34,33 +34,70 @@ POTENTIAL_REG_BEFORE = '2025'   # 潜在: EC-CUBE登録が2025年より前
 # 枠定義（5/9・5/10 各16枠）
 # ==============================
 
-SLOT_NAMES  = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯']
-SLOT_TIMES  = [
+SLOT_NAMES  = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳']
+
+# デフォルト設定（app.pyから上書き可能）
+DEFAULT_DAYS = ['5/9(土)', '5/10(日)']
+DEFAULT_SLOT_TIMES = [
     '10:00〜11:00','10:30〜11:30','11:00〜12:00','11:30〜12:30',
     '12:00〜13:00','12:30〜13:30','13:00〜14:00','13:30〜14:30',
     '14:00〜15:00','14:30〜15:30','15:00〜16:00','15:30〜16:30',
     '16:00〜17:00','16:30〜17:30','17:00〜18:00','18:00〜19:00',
 ]
-DAYS = ['5/9(土)', '5/10(日)']
 
-SLOT_DEFS = {}  # {slot_id: 表示名}
-for d, day in enumerate(DAYS):
-    for i in range(16):
-        sid = d * 16 + i + 1
-        SLOT_DEFS[sid] = f'{day} {SLOT_NAMES[i]} {SLOT_TIMES[i]}'
 
-# 希望時間帯 → 対応する枠IDリスト
-# ※テスト用（前回3/14・3/15データ）の対応
-# 本番Paperformの選択肢が変わったらここを更新する
-TIME_ZONE_MAP = {
-    '①': [1, 2, 3, 4, 5, 6],        # 5/9 午前
-    '②': [7, 8, 9, 10, 11],          # 5/9 午後
-    '③': [12, 13, 14, 15, 16],       # 5/9 夕方
-    '④': [17, 18, 19, 20, 21, 22],   # 5/10 午前
-    '⑤': [23, 24, 25, 26, 27],       # 5/10 午後
-    '⑥': [28, 29, 30, 31, 32],       # 5/10 夕方
-    '⑦': list(range(1, 33)),         # いずれでも可
-}
+def build_slot_defs(days, slot_times):
+    """日程×時間帯からSLOT_DEFSを生成"""
+    defs = {}
+    for d, day in enumerate(days):
+        for i, t in enumerate(slot_times):
+            sid = d * len(slot_times) + i + 1
+            name = SLOT_NAMES[i] if i < len(SLOT_NAMES) else f'({i+1})'
+            defs[sid] = f'{day} {name} {t}'
+    return defs
+
+
+def build_time_zone_map(days, slot_times):
+    """日×時間グループ（午前/午後/夕方）でPaperformの選択肢マップを自動生成"""
+    def parse_start(t):
+        start = t.split('〜')[0].strip()
+        h, m = map(int, start.split(':'))
+        return h * 60 + m
+
+    def get_group(t):
+        mins = parse_start(t)
+        if mins < 12 * 60:
+            return '午前'
+        elif mins < 16 * 60:
+            return '午後'
+        else:
+            return '夕方'
+
+    zone_labels = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳']
+    n = len(slot_times)
+    zone_map = {}
+    zone_idx = 0
+
+    for d, day in enumerate(days):
+        groups = {}
+        for i, t in enumerate(slot_times):
+            g = get_group(t)
+            sid = d * n + i + 1
+            groups.setdefault(g, []).append(sid)
+        for g in ['午前', '午後', '夕方']:
+            if g in groups:
+                zone_map[zone_labels[zone_idx]] = groups[g]
+                zone_idx += 1
+
+    # いずれでも可
+    all_slots = list(range(1, len(days) * n + 1))
+    zone_map[zone_labels[zone_idx]] = all_slots
+    return zone_map
+
+
+# モジュールレベルの変数（app.pyから一時的に上書きされる）
+SLOT_DEFS     = build_slot_defs(DEFAULT_DAYS, DEFAULT_SLOT_TIMES)
+TIME_ZONE_MAP = build_time_zone_map(DEFAULT_DAYS, DEFAULT_SLOT_TIMES)
 
 
 # ==============================

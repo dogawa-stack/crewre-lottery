@@ -146,8 +146,8 @@ def run_lottery_with_settings(shopify_path, paperform_path, slot_capacity_overri
 
     _lot.ALLOCATION    = {'VIP': s['vip'], '潜在': s['latent'], '新規': s['new']}
     _lot.CAPACITY_PER_SLOT = s['capacity']
-    _lot.SLOT_DEFS     = build_slot_defs(ec['days'], ec['slot_times'])
-    _lot.TIME_ZONE_MAP = build_time_zone_map(ec['days'], ec['slot_times'])
+    _lot.SLOT_DEFS     = build_slot_defs(ec['days'], ec.get('slot_times_per_day', ec.get('slot_times', DEFAULT_SLOT_TIMES)))
+    _lot.TIME_ZONE_MAP = build_time_zone_map(ec['days'], ec.get('slot_times_per_day', ec.get('slot_times', DEFAULT_SLOT_TIMES)))
 
     if slot_capacity_override:
         # 二次抽選: slot_total を空き枠に制限
@@ -213,21 +213,30 @@ if cur == 1:
         if 'event_config' not in st.session_state:
             st.session_state.event_config = default_state()['event_config']
         ec = st.session_state.event_config
+        days = ec.get('days', DEFAULT_DAYS)
+        slot_times_per_day = ec.get('slot_times_per_day', [DEFAULT_SLOT_TIMES] * len(days))
+        if len(slot_times_per_day) != len(days):
+            slot_times_per_day = [DEFAULT_SLOT_TIMES] * len(days)
+
         st.caption('開催日（1行1日）')
-        days_text = st.text_area('開催日', value='\n'.join(ec['days']), height=80, label_visibility='collapsed')
-        st.caption('時間帯（1行1スロット）')
-        times_text = st.text_area('時間帯', value='\n'.join(ec['slot_times']), height=200, label_visibility='collapsed')
+        days_text = st.text_area('開催日', value='\n'.join(days), height=80, label_visibility='collapsed')
+        new_days = [d.strip() for d in days_text.splitlines() if d.strip()]
+
+        times_inputs = []
+        for i, day in enumerate(new_days):
+            existing = slot_times_per_day[i] if i < len(slot_times_per_day) else DEFAULT_SLOT_TIMES
+            st.caption(f'{day} の時間帯（1行1スロット）')
+            t = st.text_area(f'times_{i}', value='\n'.join(existing), height=180, label_visibility='collapsed', key=f'times_day_{i}')
+            times_inputs.append([x.strip() for x in t.splitlines() if x.strip()])
+
         if st.button('設定を保存', key='save_event'):
-            days = [d.strip() for d in days_text.splitlines() if d.strip()]
-            times = [t.strip() for t in times_text.splitlines() if t.strip()]
-            st.session_state.event_config = {'days': days, 'slot_times': times}
+            st.session_state.event_config = {'days': new_days, 'slot_times_per_day': times_inputs}
             persist()
-            # プレビュー
-            preview = build_time_zone_map(days, times)
-            st.success(f'保存しました（{len(days)}日 × {len(times)}枠 = {len(days)*len(times)}スロット）')
-            for k, v in preview.items():
-                if v != list(range(1, len(days)*len(times)+1)):
-                    st.caption(f'{k}: {len(v)}枠')
+            total = sum(len(t) for t in times_inputs)
+            preview = build_time_zone_map(new_days, times_inputs)
+            st.success(f'保存しました（合計{total}スロット）')
+            for k, v in list(preview.items())[:-1]:
+                st.caption(f'{k}: {len(v)}枠')
 
     # 設定パネル
     with st.expander('⚙️ 抽選設定', expanded=False):

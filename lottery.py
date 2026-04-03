@@ -46,19 +46,32 @@ DEFAULT_SLOT_TIMES = [
 ]
 
 
-def build_slot_defs(days, slot_times):
-    """日程×時間帯からSLOT_DEFSを生成"""
+def _normalize_slot_times(days, slot_times_per_day):
+    """slot_times_per_day を日ごとのリストに正規化。
+    slot_times_per_day が単一リストの場合は全日共通として扱う。"""
+    if slot_times_per_day and isinstance(slot_times_per_day[0], str):
+        # 全日共通
+        return [slot_times_per_day] * len(days)
+    return slot_times_per_day
+
+
+def build_slot_defs(days, slot_times_per_day):
+    """日程×時間帯からSLOT_DEFSを生成（日ごとに異なる時間帯に対応）"""
+    per_day = _normalize_slot_times(days, slot_times_per_day)
     defs = {}
+    sid = 1
     for d, day in enumerate(days):
-        for i, t in enumerate(slot_times):
-            sid = d * len(slot_times) + i + 1
+        for i, t in enumerate(per_day[d]):
             name = SLOT_NAMES[i] if i < len(SLOT_NAMES) else f'({i+1})'
             defs[sid] = f'{day} {name} {t}'
+            sid += 1
     return defs
 
 
-def build_time_zone_map(days, slot_times):
+def build_time_zone_map(days, slot_times_per_day):
     """日×時間グループ（午前/午後/夕方）でPaperformの選択肢マップを自動生成"""
+    per_day = _normalize_slot_times(days, slot_times_per_day)
+
     def parse_start(t):
         start = t.split('〜')[0].strip()
         h, m = map(int, start.split(':'))
@@ -74,23 +87,24 @@ def build_time_zone_map(days, slot_times):
             return '夕方'
 
     zone_labels = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳']
-    n = len(slot_times)
     zone_map = {}
     zone_idx = 0
+    sid = 1
+    all_slots = []
 
     for d, day in enumerate(days):
         groups = {}
-        for i, t in enumerate(slot_times):
+        for t in per_day[d]:
             g = get_group(t)
-            sid = d * n + i + 1
             groups.setdefault(g, []).append(sid)
+            all_slots.append(sid)
+            sid += 1
         for g in ['午前', '午後', '夕方']:
             if g in groups:
                 zone_map[zone_labels[zone_idx]] = groups[g]
                 zone_idx += 1
 
     # いずれでも可
-    all_slots = list(range(1, len(days) * n + 1))
     zone_map[zone_labels[zone_idx]] = all_slots
     return zone_map
 

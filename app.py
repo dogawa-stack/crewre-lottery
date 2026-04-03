@@ -138,7 +138,7 @@ def run_lottery_with_settings(shopify_path, paperform_path, slot_capacity_overri
 
     # 設定を一時的に反映
     s = st.session_state.settings
-    ec = st.session_state.event_config
+    ec = st.session_state.get('event_config', default_state()['event_config'])
     orig_alloc     = dict(_lot.ALLOCATION)
     orig_capacity  = _lot.CAPACITY_PER_SLOT
     orig_slot_defs = dict(_lot.SLOT_DEFS)
@@ -210,6 +210,8 @@ if cur == 1:
 
     # イベント設定
     with st.expander('📅 イベント設定（日程・時間帯）', expanded=False):
+        if 'event_config' not in st.session_state:
+            st.session_state.event_config = default_state()['event_config']
         ec = st.session_state.event_config
         st.caption('開催日（1行1日）')
         days_text = st.text_area('開催日', value='\n'.join(ec['days']), height=80, label_visibility='collapsed')

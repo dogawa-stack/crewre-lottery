@@ -210,6 +210,58 @@ if cur == 1:
 
     # イベント設定
     with st.expander('📅 イベント設定（日程・時間帯）', expanded=False):
+        # スクショから自動識別
+        st.subheader('📸 スケジュール画像から自動入力')
+        img_file = st.file_uploader('スケジュール表のスクショをアップロード', type=['png','jpg','jpeg'], key='schedule_img')
+        if img_file and st.button('🔍 自動識別', key='auto_detect'):
+            try:
+                import anthropic, base64
+                api_key = st.secrets.get('ANTHROPIC_API_KEY', '')
+                if not api_key:
+                    st.error('Streamlit CloudにANTHROPIC_API_KEYが設定されていません')
+                else:
+                    img_b64 = base64.standard_b64encode(img_file.read()).decode()
+                    ext = img_file.name.split('.')[-1].lower()
+                    media = 'image/jpeg' if ext in ['jpg','jpeg'] else 'image/png'
+                    client = anthropic.Anthropic(api_key=api_key)
+                    with st.spinner('解析中...'):
+                        msg = client.messages.create(
+                            model='claude-haiku-4-5-20251001',
+                            max_tokens=1024,
+                            messages=[{
+                                'role': 'user',
+                                'content': [
+                                    {'type': 'image', 'source': {'type': 'base64', 'media_type': media, 'data': img_b64}},
+                                    {'type': 'text', 'text': '''このスケジュール表から抽選枠（入場時間）を抽出してください。
+以下のJSON形式で返してください。時間帯は「HH:MM〜HH:MM」形式で。
+{
+  "days": ["5/9(土)", "5/10(日)"],
+  "slot_times_per_day": [
+    ["10:00〜11:00", "10:30〜11:30", ...],
+    ["10:00〜11:00", "10:30〜11:30", ...]
+  ]
+}
+JSONのみ返してください。'''}
+                                ]
+                            }]
+                        )
+                    import json, re
+                    text = msg.content[0].text
+                    match = re.search(r'\{.*\}', text, re.DOTALL)
+                    if match:
+                        data = json.loads(match.group())
+                        st.session_state.event_config = {
+                            'days': data['days'],
+                            'slot_times_per_day': data['slot_times_per_day']
+                        }
+                        persist()
+                        st.success(f'✅ 自動識別完了！{len(data["days"])}日、合計{sum(len(t) for t in data["slot_times_per_day"])}スロット')
+                        st.rerun()
+                    else:
+                        st.error('解析に失敗しました。手動で入力してください。')
+            except Exception as e:
+                st.error(f'エラー: {e}')
+        st.divider()
         if 'event_config' not in st.session_state:
             st.session_state.event_config = default_state()['event_config']
         ec = st.session_state.event_config

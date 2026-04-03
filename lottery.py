@@ -2,6 +2,7 @@
 # lottery.py - crewre popupイベント抽選システム
 
 import csv
+import os
 import random
 from collections import defaultdict
 import openpyxl
@@ -80,18 +81,53 @@ def classify(total_spent):
         return '新規'
 
 
+ECCUBE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'eccube_members.xlsx')
+
+def load_eccube():
+    """EC-CUBE XLSX → {email: total_spent} の辞書"""
+    import openpyxl
+    eccube = {}
+    if not os.path.exists(ECCUBE_PATH):
+        return eccube
+    wb = openpyxl.load_workbook(ECCUBE_PATH, read_only=False, data_only=True)
+    ws = wb.active
+    headers = [ws.cell(1, i).value for i in range(1, ws.max_column + 1)]
+    email_idx  = headers.index('E-MAIL') + 1
+    spent_idx  = headers.index('お買い上げ合計額') + 1
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        email = row[email_idx - 1]
+        spent = row[spent_idx - 1]
+        if email:
+            try:
+                eccube[str(email).strip().lower()] = float(str(spent).replace(',', '') or 0)
+            except:
+                eccube[str(email).strip().lower()] = 0
+    wb.close()
+    return eccube
+
+
 def load_shopify(path):
-    """Shopify CSV → {email: {spent, name}} の辞書"""
+    """Shopify CSV → {email: {spent, name}} の辞書（EC-CUBEデータと合算）"""
+    eccube = load_eccube()
     customers = {}
     with open(path, encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
             email = row['Email'].strip().lower()
             if email:
+                try:
+                    shopify_spent = float(str(row['Total Spent']).replace(',', '') or 0)
+                except:
+                    shopify_spent = 0
+                total = shopify_spent + eccube.get(email, 0)
                 customers[email] = {
                     'name': f"{row['First Name']} {row['Last Name']}".strip(),
-                    'spent': row['Total Spent'],
+                    'spent': total,
                 }
+    # EC-CUBEにいてShopifyにいない会員も追加
+    for email, spent in eccube.items():
+        if email not in customers:
+            customers[email] = {'name': '', 'spent': spent}
     return customers
 
 

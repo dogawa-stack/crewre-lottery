@@ -15,7 +15,7 @@ from collections import defaultdict
 LOTTERY_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, LOTTERY_DIR)
 
-from lottery import load_shopify, load_applicants, run_lottery, SLOT_DEFS, build_slot_defs, build_time_zone_map, DEFAULT_DAYS, DEFAULT_SLOT_TIMES
+from lottery import load_shopify, load_applicants, run_lottery, SLOT_DEFS, build_slot_defs, build_time_zone_map, DEFAULT_DAYS, DEFAULT_SLOT_TIMES, SLOT_NAMES
 from shopify_tag import get_customer_by_email, add_tag, SHOP, TAG
 from email_templates import (
     SUBJECT_WINNER,     BODY_WINNER,
@@ -227,7 +227,11 @@ if cur == 1:
             existing = slot_times_per_day[i] if i < len(slot_times_per_day) else DEFAULT_SLOT_TIMES
             st.caption(f'{day} の時間帯（1行1スロット）')
             t = st.text_area(f'times_{i}', value='\n'.join(existing), height=180, label_visibility='collapsed', key=f'times_day_{i}')
-            times_inputs.append([x.strip() for x in t.splitlines() if x.strip()])
+            parsed = [x.strip() for x in t.splitlines() if x.strip()]
+            times_inputs.append(parsed)
+            # 番号プレビュー
+            preview_text = '　'.join(f'{SLOT_NAMES[j]} {s}' for j, s in enumerate(parsed) if j < len(SLOT_NAMES))
+            st.caption(preview_text)
 
         if st.button('設定を保存', key='save_event'):
             st.session_state.event_config = {'days': new_days, 'slot_times_per_day': times_inputs}

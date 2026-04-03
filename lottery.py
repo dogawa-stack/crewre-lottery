@@ -63,7 +63,7 @@ def build_slot_defs(days, slot_times_per_day):
     for d, day in enumerate(days):
         for i, t in enumerate(per_day[d]):
             name = SLOT_NAMES[i] if i < len(SLOT_NAMES) else f'({i+1})'
-            defs[sid] = f'No.{sid} {day} {name} {t}'
+            defs[sid] = f'{day} {name} {t}'
             sid += 1
     return defs
 

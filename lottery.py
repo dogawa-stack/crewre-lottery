@@ -25,10 +25,10 @@ CAPACITY_PER_SLOT = 10
 # 各枠のVIP/潜在/新規 配分（合計=CAPACITY_PER_SLOT）
 ALLOCATION = {'VIP': 3, '潜在': 3, '新規': 4}
 
-# ステータス分類の閾値（円）
-VIP_THRESHOLD   =  50000  # 5万円以上 = VIP
-POTENTIAL_MIN   =  10000  # 1万円以上
-POTENTIAL_MAX   =  49999  # 5万円未満 = 潜在
+# ステータス分類の閾値（毎回調整可能）
+VIP_THRESHOLD        = 200000   # VIP: 合算購入額200,000円以上
+POTENTIAL_REG_BEFORE = '2025'   # 潜在: EC-CUBE登録が2025年より前
+# 新規: 2025年以降登録 または EC-CUBEに登録なし
 
 # ==============================
 # 枠定義（5/9・5/10 各16枠）
@@ -67,47 +67,50 @@ TIME_ZONE_MAP = {
 # メイン処理
 # ==============================
 
-def classify(total_spent):
-    """購入金額からステータスを返す"""
+def classify(total_spent, eccube_registered=''):
+    """購入金額・EC-CUBE登録時期からステータスを返す"""
     try:
         amount = float(str(total_spent).replace(',', '').replace("'", ''))
     except:
-        return '新規'
+        amount = 0
     if amount >= VIP_THRESHOLD:
         return 'VIP'
-    elif POTENTIAL_MIN <= amount <= POTENTIAL_MAX:
+    # EC-CUBEに登録あり かつ POTENTIAL_REG_BEFORE より前 → 潜在
+    if eccube_registered and eccube_registered[:4] < POTENTIAL_REG_BEFORE:
         return '潜在'
-    else:
-        return '新規'
+    return '新規'
 
 
 ECCUBE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'eccube_members.xlsx')
 
 def load_eccube():
-    """EC-CUBE XLSX → {email: total_spent} の辞書"""
-    import openpyxl
+    """EC-CUBE XLSX → {email: {spent, registered}} の辞書"""
     eccube = {}
     if not os.path.exists(ECCUBE_PATH):
         return eccube
-    wb = openpyxl.load_workbook(ECCUBE_PATH, read_only=False, data_only=True)
+    wb = openpyxl.load_workbook(ECCUBE_PATH, data_only=True)
     ws = wb.active
     headers = [ws.cell(1, i).value for i in range(1, ws.max_column + 1)]
-    email_idx  = headers.index('E-MAIL') + 1
-    spent_idx  = headers.index('お買い上げ合計額') + 1
+    email_idx = headers.index('E-MAIL') + 1
+    spent_idx = headers.index('お買い上げ合計額') + 1
+    date_idx  = headers.index('登録日') + 1
     for row in ws.iter_rows(min_row=2, values_only=True):
         email = row[email_idx - 1]
         spent = row[spent_idx - 1]
+        reg   = row[date_idx - 1]
         if email:
             try:
-                eccube[str(email).strip().lower()] = float(str(spent).replace(',', '') or 0)
+                s = float(str(spent).replace(',', '') or 0)
             except:
-                eccube[str(email).strip().lower()] = 0
+                s = 0
+            reg_str = str(reg)[:7] if reg else ''  # 'YYYY-MM'
+            eccube[str(email).strip().lower()] = {'spent': s, 'registered': reg_str}
     wb.close()
     return eccube
 
 
 def load_shopify(path):
-    """Shopify CSV → {email: {spent, name}} の辞書（EC-CUBEデータと合算）"""
+    """Shopify CSV → {email: {name, spent, eccube_registered}} の辞書（EC-CUBEデータと合算）"""
     eccube = load_eccube()
     customers = {}
     with open(path, encoding='utf-8') as f:
@@ -119,15 +122,21 @@ def load_shopify(path):
                     shopify_spent = float(str(row['Total Spent']).replace(',', '') or 0)
                 except:
                     shopify_spent = 0
-                total = shopify_spent + eccube.get(email, 0)
+                ec = eccube.get(email, {})
+                total = shopify_spent + ec.get('spent', 0)
                 customers[email] = {
                     'name': f"{row['First Name']} {row['Last Name']}".strip(),
                     'spent': total,
+                    'eccube_registered': ec.get('registered', ''),
                 }
     # EC-CUBEにいてShopifyにいない会員も追加
-    for email, spent in eccube.items():
+    for email, ec in eccube.items():
         if email not in customers:
-            customers[email] = {'name': '', 'spent': spent}
+            customers[email] = {
+                'name': '',
+                'spent': ec['spent'],
+                'eccube_registered': ec.get('registered', ''),
+            }
     return customers
 
 
@@ -154,7 +163,7 @@ def load_applicants(path, shopify):
                 preferred = set(range(1, 33))  # 指定なし = 全枠対象
 
             customer = shopify.get(email, {})
-            status = classify(customer.get('spent', 0))
+            status = classify(customer.get('spent', 0), customer.get('eccube_registered', ''))
 
             applicants.append({
                 'name':      name,

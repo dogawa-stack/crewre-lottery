@@ -377,12 +377,25 @@ if cur == 1:
             if st.button('📊 当選者・落選者をスプシに書き込み', type='primary', key='write_sheets'):
                 try:
                     from sheets_helper import write_sheet
-                    # 当選者シート
-                    w_headers = ['チェックインID', '氏名', 'メールアドレス', 'ステータス', '当選枠', 'ペア参加', '同伴者名', '出欠']
-                    w_rows = [[w['checkin_id'], w['name'], w['email'], w['status'],
-                               w['slot'], 'あり' if w.get('is_pair') else '',
-                               w.get('companion_name', ''), '']
-                              for w in sorted(winners, key=lambda x: x['checkin_id'])]
+                    # 当選者シート（枠ごとにグループ化、ペア相手の名前表示、枠間に空行）
+                    w_headers = ['チェックインID', '氏名', 'メールアドレス', 'ステータス', '当選枠', 'ペア相手', '同伴者名', '出欠']
+                    sorted_winners = sorted(winners, key=lambda x: x['checkin_id'])
+                    w_rows = []
+                    # ペア相手を名前で引けるようにする
+                    email_to_name = {w['email']: w['name'] for w in sorted_winners}
+                    current_slot = None
+                    for w in sorted_winners:
+                        if current_slot and current_slot != w.get('slot_id'):
+                            w_rows.append([''] * len(w_headers))  # 枠間の空行
+                        current_slot = w.get('slot_id')
+                        pair_display = ''
+                        if w.get('is_pair') and w.get('pair_name'):
+                            pair_display = w['pair_name']
+                        w_rows.append([
+                            w['checkin_id'], w['name'], w['email'], w['status'],
+                            w['slot'], pair_display,
+                            w.get('companion_name', ''), '',
+                        ])
                     write_sheet(SPREADSHEET_ID, '当選リスト', w_headers, w_rows)
                     # 落選者シート
                     l_headers = ['氏名', 'メールアドレス', 'ステータス', '希望日時']

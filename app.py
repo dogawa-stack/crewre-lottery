@@ -210,64 +210,6 @@ if cur == 1:
 
     # イベント設定
     with st.expander('📅 イベント設定（日程・時間帯）', expanded=False):
-        # スクショから自動識別
-        st.subheader('📸 スケジュール画像から自動入力')
-        img_file = st.file_uploader('スケジュール表のスクショをアップロード', type=['png','jpg','jpeg'], key='schedule_img')
-        if img_file and st.button('🔍 自動識別', key='auto_detect'):
-            try:
-                import anthropic, base64
-                api_key = st.secrets.get('ANTHROPIC_API_KEY', '')
-                if not api_key:
-                    st.error('Streamlit CloudにANTHROPIC_API_KEYが設定されていません')
-                else:
-                    img_b64 = base64.standard_b64encode(img_file.read()).decode()
-                    ext = img_file.name.split('.')[-1].lower()
-                    media = 'image/jpeg' if ext in ['jpg','jpeg'] else 'image/png'
-                    client = anthropic.Anthropic(api_key=api_key)
-                    with st.spinner('解析中...'):
-                        msg = client.messages.create(
-                            model='claude-haiku-4-5-20251001',
-                            max_tokens=1024,
-                            messages=[{
-                                'role': 'user',
-                                'content': [
-                                    {'type': 'image', 'source': {'type': 'base64', 'media_type': media, 'data': img_b64}},
-                                    {'type': 'text', 'text': '''このポップアップイベントのスケジュール表から、各日の入場枠を抽出してください。
-
-ルール：
-- 「action」列に丸数字（①②③...）がある行が入場枠です
-- 各枠は滞在1時間（例：10:00入場なら「10:00〜11:00」）
-- 「準備」「退場のみ」「休憩」「インフルエンサー」「片付け」の行は除外
-- 13:00など昼休憩でスキップされている枠は含めない
-
-以下のJSON形式のみ返してください：
-{
-  "days": ["5/9(土)", "5/10(日)"],
-  "slot_times_per_day": [
-    ["10:00〜11:00", "10:30〜11:30", ...],
-    ["10:00〜11:00", "10:30〜11:30", ...]
-  ]
-}'''}
-                                ]
-                            }]
-                        )
-                    import json, re
-                    text = msg.content[0].text
-                    match = re.search(r'\{.*\}', text, re.DOTALL)
-                    if match:
-                        data = json.loads(match.group())
-                        st.session_state.event_config = {
-                            'days': data['days'],
-                            'slot_times_per_day': data['slot_times_per_day']
-                        }
-                        persist()
-                        st.success(f'✅ 自動識別完了！{len(data["days"])}日、合計{sum(len(t) for t in data["slot_times_per_day"])}スロット')
-                        st.rerun()
-                    else:
-                        st.error('解析に失敗しました。手動で入力してください。')
-            except Exception as e:
-                st.error(f'エラー: {e}')
-        st.divider()
         if 'event_config' not in st.session_state:
             st.session_state.event_config = default_state()['event_config']
         ec = st.session_state.event_config
@@ -276,29 +218,72 @@ if cur == 1:
         if len(slot_times_per_day) != len(days):
             slot_times_per_day = [DEFAULT_SLOT_TIMES] * len(days)
 
-        st.caption('開催日（1行1日）')
-        days_text = st.text_area('開催日', value='\n'.join(days), height=80, label_visibility='collapsed')
-        new_days = [d.strip() for d in days_text.splitlines() if d.strip()]
+        # --- 開催日数 ---
+        num_days = st.number_input('開催日数', min_value=1, max_value=5, value=len(days), step=1, key='num_days')
 
+        day_labels = []
+        for i in range(num_days):
+            default_label = days[i] if i < len(days) else f'Day{i+1}'
+            day_labels.append(st.text_input(f'Day {i+1} の日付', value=default_label, key=f'day_label_{i}'))
+
+        st.divider()
+
+        # --- スロット自動生成 ---
+        st.subheader('⏰ スロット自動生成')
+        gc1, gc2, gc3, gc4 = st.columns(4)
+        start_h = gc1.number_input('開始時刻（時）', min_value=0, max_value=23, value=10, step=1)
+        start_m = gc2.number_input('開始時刻（分）', min_value=0, max_value=59, value=0, step=30)
+        interval = gc3.number_input('間隔（分）', min_value=10, max_value=120, value=30, step=5)
+        duration = gc4.number_input('1枠の長さ（分）', min_value=30, max_value=180, value=60, step=30)
+
+        gc5, gc6 = st.columns(2)
+        end_h = gc5.number_input('終了時刻（時）', min_value=0, max_value=23, value=19, step=1)
+        end_m = gc6.number_input('終了時刻（分）', min_value=0, max_value=59, value=0, step=30)
+
+        def generate_slots(s_h, s_m, e_h, e_m, intv, dur):
+            slots = []
+            cur_min = s_h * 60 + s_m
+            end_min = e_h * 60 + e_m
+            while cur_min + dur <= end_min:
+                sh, sm = divmod(cur_min, 60)
+                eh, em = divmod(cur_min + dur, 60)
+                slots.append(f'{sh}:{sm:02d}〜{eh}:{em:02d}')
+                cur_min += intv
+            return slots
+
+        generated = generate_slots(start_h, start_m, end_h, end_m, interval, duration)
+
+        if generated:
+            st.caption(f'生成されるスロット: {len(generated)}枠')
+
+        # --- 日ごとのスロット選択 ---
         times_inputs = []
-        for i, day in enumerate(new_days):
-            existing = slot_times_per_day[i] if i < len(slot_times_per_day) else DEFAULT_SLOT_TIMES
-            st.caption(f'{day} の時間帯（1行1スロット）')
-            t = st.text_area(f'times_{i}', value='\n'.join(existing), height=180, label_visibility='collapsed', key=f'times_day_{i}')
-            parsed = [x.strip() for x in t.splitlines() if x.strip()]
-            times_inputs.append(parsed)
-            # 番号プレビュー
-            preview_text = '　'.join(f'{SLOT_NAMES[j]} {s}' for j, s in enumerate(parsed) if j < len(SLOT_NAMES))
-            st.caption(preview_text)
+        for i, day in enumerate(day_labels):
+            st.markdown(f'**{day}**')
+            existing = slot_times_per_day[i] if i < len(slot_times_per_day) else []
+            # 既存 or 生成済みスロットをデフォルトにする
+            default_slots = existing if existing else generated
+            selected = []
+            slot_cols = st.columns(4)
+            for j, slot in enumerate(generated):
+                checked = slot in default_slots
+                col = slot_cols[j % 4]
+                if col.checkbox(f'{SLOT_NAMES[j]} {slot}' if j < len(SLOT_NAMES) else slot,
+                               value=checked, key=f'slot_{i}_{j}'):
+                    selected.append(slot)
+            times_inputs.append(selected)
+            st.caption(f'→ {len(selected)}枠選択中')
+            st.divider()
 
-        if st.button('設定を保存', key='save_event'):
-            st.session_state.event_config = {'days': new_days, 'slot_times_per_day': times_inputs}
+        # プレビュー
+        total_slots = sum(len(t) for t in times_inputs)
+        total_people = total_slots * st.session_state.settings['capacity']
+        st.info(f'📊 合計 **{total_slots}スロット** × {st.session_state.settings["capacity"]}名 = **{total_people}名**')
+
+        if st.button('✅ 設定を保存', key='save_event', type='primary'):
+            st.session_state.event_config = {'days': day_labels, 'slot_times_per_day': times_inputs}
             persist()
-            total = sum(len(t) for t in times_inputs)
-            preview = build_time_zone_map(new_days, times_inputs)
-            st.success(f'保存しました（合計{total}スロット）')
-            for k, v in list(preview.items())[:-1]:
-                st.caption(f'{k}: {len(v)}枠')
+            st.success(f'保存しました！（{len(day_labels)}日間・合計{total_slots}スロット）')
 
     # 設定パネル
     with st.expander('⚙️ 抽選設定', expanded=False):

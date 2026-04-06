@@ -1,26 +1,51 @@
 #!/usr/bin/env python3
-# sheets_helper.py - Google Sheets API helper (gcloud auth token)
+# sheets_helper.py - Google Sheets API helper (OAuth2 refresh token)
 
 import json
-import subprocess
+import os
 import urllib.request
 import urllib.parse
 import time
 
 _token_cache = {'token': None, 'expires': 0}
 
+# Streamlit Cloud: st.secretsから、ローカル: 環境変数 or gcloudから取得
+def _get_credentials():
+    """OAuth2クレデンシャルを取得"""
+    try:
+        import streamlit as st
+        if hasattr(st, 'secrets') and 'gcp' in st.secrets:
+            return st.secrets['gcp']
+    except Exception:
+        pass
+    # ローカルフォールバック: gcloudのcredentials.dbから取得
+    import sqlite3
+    db_path = os.path.expanduser('~/.config/gcloud/credentials.db')
+    if os.path.exists(db_path):
+        db = sqlite3.connect(db_path)
+        for row in db.execute('SELECT * FROM credentials'):
+            return json.loads(row[1])
+    raise Exception('Google認証情報が見つかりません。Streamlit secretsまたはgcloud auth loginを設定してください。')
+
 
 def get_access_token():
-    """gcloud auth print-access-token でアクセストークンを取得（キャッシュ付き）"""
+    """OAuth2リフレッシュトークンでアクセストークンを取得（キャッシュ付き）"""
     now = time.time()
     if _token_cache['token'] and now < _token_cache['expires']:
         return _token_cache['token']
-    token = subprocess.check_output(
-        ["gcloud", "auth", "print-access-token"], stderr=subprocess.DEVNULL
-    ).decode().strip()
-    _token_cache['token'] = token
+    creds = _get_credentials()
+    data = urllib.parse.urlencode({
+        'client_id': creds['client_id'],
+        'client_secret': creds['client_secret'],
+        'refresh_token': creds['refresh_token'],
+        'grant_type': 'refresh_token',
+    }).encode()
+    req = urllib.request.Request('https://oauth2.googleapis.com/token', data=data)
+    resp = urllib.request.urlopen(req)
+    result = json.loads(resp.read())
+    _token_cache['token'] = result['access_token']
     _token_cache['expires'] = now + 3000  # 50分キャッシュ
-    return token
+    return _token_cache['token']
 
 
 def _api(method, url, body=None, retry=True):

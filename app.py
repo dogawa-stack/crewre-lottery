@@ -744,33 +744,40 @@ with st.sidebar:
 
 [📄 詳細マニュアル（Notion）](https://www.notion.so/33a69b833f5e8192a0eacf1d4283fb2d)
 ''')
-    with st.expander('📝 メールテンプレート'):
-        mail_tab1, mail_tab2, mail_tab3, mail_tab4, mail_tab5 = st.tabs([
-            '当選', '落選', '二次当選', '直前案内', 'お礼'
-        ])
-        with mail_tab1:
-            st.caption(f'件名: {SUBJECT_WINNER}')
-            st.code(BODY_WINNER, language=None)
-        with mail_tab2:
-            st.caption(f'件名: {SUBJECT_LOSER}')
-            st.code(BODY_LOSER, language=None)
-        with mail_tab3:
-            st.caption(f'件名: {SUBJECT_WINNER_2ND}')
-            st.code(BODY_WINNER_2ND, language=None)
-        with mail_tab4:
-            st.caption(f'件名: {SUBJECT_REMINDER}')
-            st.code(BODY_REMINDER, language=None)
-        with mail_tab5:
-            st.caption(f'件名: {SUBJECT_THANKS}')
-            st.code(BODY_THANKS, language=None)
-    with st.expander('📋 フォームテンプレート'):
-        st.markdown('''
-**出欠確認フォーム（テンプレ元）**
-[Google Form](https://docs.google.com/forms/d/1yLfnvqV9pE9Cdf4E1DYTNu_Wxas8pURYPFaO8v7XlhI/edit)
+    with st.expander('📋 テンプレート集'):
+        tpl_tab1, tpl_tab2, tpl_tab3 = st.tabs(['メール', 'フォーム', '告知'])
+        with tpl_tab1:
+            st.caption('イベントごとに email_templates.py を編集')
+            for label, subj, body in [
+                ('当選メール', SUBJECT_WINNER, BODY_WINNER),
+                ('落選メール', SUBJECT_LOSER, BODY_LOSER),
+                ('二次当選メール', SUBJECT_WINNER_2ND, BODY_WINNER_2ND),
+                ('直前案内メール', SUBJECT_REMINDER, BODY_REMINDER),
+                ('お礼メール', SUBJECT_THANKS, BODY_THANKS),
+            ]:
+                with st.expander(f'{label}（件名: {subj}）'):
+                    st.code(body, language=None)
+        with tpl_tab2:
+            st.markdown('''
+**応募フォーム（Paperform）**
+[テンプレ元](https://paperform.co/) ※要ログイン・前回フォームをコピー
 
-**参加後アンケート（テンプレ元）**
+**出欠確認フォーム**
+[テンプレ元](https://docs.google.com/forms/d/1yLfnvqV9pE9Cdf4E1DYTNu_Wxas8pURYPFaO8v7XlhI/edit)
+
+**参加後アンケート**
 準備中
 
 ※イベントごとにコピーして日程・会場を書き換えて使用
+''')
+        with tpl_tab3:
+            st.markdown('''
+**newsページ告知**
+準備中
+
+**SNS告知文**
+準備中
+
+※過去の告知を参考にテンプレ化予定
 ''')
 

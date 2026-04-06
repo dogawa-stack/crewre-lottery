@@ -231,7 +231,11 @@ def load_applicants(path, shopify):
             clean = {k.strip(): v for k, v in row.items() if k}
 
             email = _find_col(clean, ['メールアドレス', 'メール', 'Email']).strip().lower()
-            name  = _find_col(clean, ['氏名', 'お名前']).strip()
+            # 姓名が別列の場合（姓=「お名前(...)」、名=空白列名）を結合
+            last_name = _find_col(clean, ['氏名', 'お名前']).strip()
+            # 名前列: 元キーが' '(スペース)→strip後''、どちらでも取得
+            first_name = (clean.get('', '') or row.get(' ', '') or '').strip()
+            name = f"{last_name} {first_name}".strip() if first_name else last_name
             slot_str = _find_col(clean, ['希望日時', 'ご希望のご来場日', '来場日']).strip()
 
             if not email or not name:

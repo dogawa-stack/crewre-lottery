@@ -270,67 +270,6 @@ def load_applicants(path, shopify):
     return applicants
 
 
-def load_applicants_from_sheets(spreadsheet_id, sheet_name, shopify):
-    """Google Sheets → 応募者リストを返す"""
-    from sheets_helper import read_sheet
-    rows = read_sheet(spreadsheet_id, sheet_name)
-    applicants = []
-    for row in rows:
-        email = _find_col(row, ['メールアドレス', 'メール', 'Email']).strip().lower()
-        name = _find_col(row, ['氏名', 'お名前']).strip()
-        slot_str = _find_col(row, ['希望日時', 'ご希望のご来場日', '来場日']).strip()
-
-        if not email or not name:
-            continue
-
-        preferred = parse_preferred_slots(slot_str)
-        if not preferred:
-            preferred = set(range(1, 33))
-
-        customer = shopify.get(email, {})
-        status = classify(customer.get('spent', 0), customer.get('eccube_registered', ''))
-
-        pair_col = _find_col(row, ['ペア参加を希望しますか？', '参加形式をお選びください', '参加形式']).strip()
-        is_pair = pair_col in ('希望する', 'ペア参加を希望する')
-
-        companion_name = _find_col(row, ['同伴される方', '同伴者', '同伴者氏名']).strip()
-        is_companion = pair_col == '同伴者様との参加を希望する' or bool(companion_name)
-
-        applicants.append({
-            'name':      name,
-            'email':     email,
-            'preferred': preferred,
-            'status':    status,
-            'slot_str':  slot_str,
-            'is_pair':   is_pair,
-            'pair_name': _find_col(row, ['ペアの方', 'ペアの方の氏名', 'ペア氏名']).strip(),
-            'has_companion': is_companion,
-            'companion_name': companion_name,
-        })
-    return applicants
-
-
-def write_results_to_sheets(spreadsheet_id, winners, losers):
-    """当選者・落選者をGoogle Sheetsに書き込み"""
-    from sheets_helper import write_sheet
-
-    # 当選者シート
-    w_headers = ['チェックインID', '氏名', 'メールアドレス', 'ステータス', '当選枠', 'ペア参加', 'ペア氏名', '出欠']
-    w_rows = []
-    for w in sorted(winners, key=lambda x: x['checkin_id']):
-        w_rows.append([
-            w['checkin_id'], w['name'], w['email'], w['status'],
-            w['slot'], 'あり' if w['is_pair'] else '',
-            w.get('pair_name', ''), '',
-        ])
-    write_sheet(spreadsheet_id, '当選者', w_headers, w_rows)
-
-    # 落選者シート
-    l_headers = ['氏名', 'メールアドレス', 'ステータス', '希望日時']
-    l_rows = [[l['name'], l['email'], l['status'], l.get('preferred', '')] for l in losers]
-    write_sheet(spreadsheet_id, '落選者', l_headers, l_rows)
-
-
 def run_lottery(applicants):
     """抽選を実行し、当選者リストと落選者リストを返す"""
 

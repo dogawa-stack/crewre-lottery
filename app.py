@@ -744,4 +744,23 @@ with st.sidebar:
 
 [📄 詳細マニュアル（Notion）](https://www.notion.so/33a69b833f5e8192a0eacf1d4283fb2d)
 ''')
+    with st.expander('📝 メールテンプレート'):
+        mail_tab1, mail_tab2, mail_tab3, mail_tab4, mail_tab5 = st.tabs([
+            '当選', '落選', '二次当選', '直前案内', 'お礼'
+        ])
+        with mail_tab1:
+            st.caption(f'件名: {SUBJECT_WINNER}')
+            st.code(BODY_WINNER, language=None)
+        with mail_tab2:
+            st.caption(f'件名: {SUBJECT_LOSER}')
+            st.code(BODY_LOSER, language=None)
+        with mail_tab3:
+            st.caption(f'件名: {SUBJECT_WINNER_2ND}')
+            st.code(BODY_WINNER_2ND, language=None)
+        with mail_tab4:
+            st.caption(f'件名: {SUBJECT_REMINDER}')
+            st.code(BODY_REMINDER, language=None)
+        with mail_tab5:
+            st.caption(f'件名: {SUBJECT_THANKS}')
+            st.code(BODY_THANKS, language=None)
 

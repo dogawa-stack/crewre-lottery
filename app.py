@@ -384,17 +384,21 @@ if cur == 1:
 
         st.divider()
         st.subheader('メール送信')
+        st.warning('⚠️ メール送信は取り消しできません。本番時のみ実行してください。')
         uf = st.session_state.url_fields
         c1, c2 = st.columns(2)
         uf['attendance_url']      = c1.text_input('出欠フォームURL', value=uf.get('attendance_url', ''))
         uf['attendance_deadline'] = c2.text_input('回答締切',        value=uf.get('attendance_deadline', ''), placeholder='例: 4/10(木) 23:59')
         st.session_state.url_fields = uf; persist()
 
+        # メール送信ロック（チェックボックスで解除しないと押せない）
+        mail_unlock = st.checkbox('🔓 メール送信のロックを解除する（本番のみ）', value=False, key='mail_unlock_1')
+
         sent = st.session_state.sent_modes
         c1, c2 = st.columns(2)
         with c1:
             if 'winner' not in sent:
-                if st.button('📨 当選メール送信', type='primary', key='bw1'):
+                if st.button('📨 当選メール送信', type='primary', key='bw1', disabled=not mail_unlock):
                     if not uf.get('attendance_url'):
                         st.warning('出欠フォームURLを入力してください')
                     else:
@@ -409,7 +413,7 @@ if cur == 1:
                 st.success('✅ 当選メール送信済み')
         with c2:
             if 'loser' not in sent:
-                if st.button('📨 落選メール送信', key='bl1'):
+                if st.button('📨 落選メール送信', key='bl1', disabled=not mail_unlock):
                     ok, ng, errs = send_bulk(losers, SUBJECT_LOSER, BODY_LOSER, is_loser=True)
                     if ng == 0:
                         st.success(f'✅ {ok}件送信完了')
@@ -536,9 +540,11 @@ elif cur == 3:
             'ステータス': w['status'], '当選枠': w['slot'],
         } for w in sw]), use_container_width=True)
 
+        st.warning('⚠️ メール送信は取り消しできません。本番時のみ実行してください。')
+        mail_unlock3 = st.checkbox('🔓 メール送信のロックを解除する（本番のみ）', value=False, key='mail_unlock_3')
         sent = st.session_state.sent_modes
         if 'winner2' not in sent:
-            if st.button('📨 二次当選メール送信', type='primary'):
+            if st.button('📨 二次当選メール送信', type='primary', disabled=not mail_unlock3):
                 ok, ng, errs = send_bulk(sw, SUBJECT_WINNER_2ND, BODY_WINNER_2ND)
                 if ng == 0:
                     st.success(f'✅ {ok}件送信完了')
@@ -576,9 +582,12 @@ elif cur == 4:
     st.metric('送信対象（当選者全員）', f'{len(all_winners)}名')
     sent = st.session_state.sent_modes
 
+    st.warning('⚠️ メール送信は取り消しできません。本番時のみ実行してください。')
+    mail_unlock4 = st.checkbox('🔓 メール送信のロックを解除する（本番のみ）', value=False, key='mail_unlock_4')
+
     st.subheader('直前案内メール（前日）')
     if 'reminder' not in sent:
-        if st.button('📨 直前案内メール送信', type='primary'):
+        if st.button('📨 直前案内メール送信', type='primary', disabled=not mail_unlock4):
             if not uf.get('presale_url'):
                 st.warning('先行販売URLを入力してください')
             else:
@@ -595,7 +604,7 @@ elif cur == 4:
     st.subheader('お礼・アンケートメール（翌日）')
     sent = st.session_state.sent_modes
     if 'thanks' not in sent:
-        if st.button('📨 お礼メール送信'):
+        if st.button('📨 お礼メール送信', disabled=not mail_unlock4):
             if not uf.get('survey_url'):
                 st.warning('アンケートURLを入力してください')
             else:

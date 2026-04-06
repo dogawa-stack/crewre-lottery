@@ -15,7 +15,7 @@ from collections import defaultdict
 LOTTERY_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, LOTTERY_DIR)
 
-from lottery import load_shopify, load_applicants, run_lottery, SLOT_DEFS, build_slot_defs, build_time_zone_map, DEFAULT_DAYS, DEFAULT_SLOT_TIMES, SLOT_NAMES
+from lottery import load_shopify, load_applicants, load_applicants_from_sheets, run_lottery, write_results_to_sheets, SLOT_DEFS, build_slot_defs, build_time_zone_map, DEFAULT_DAYS, DEFAULT_SLOT_TIMES, SLOT_NAMES
 from shopify_tag import get_customer_by_email, add_tag, SHOP, TAG
 from email_templates import (
     SUBJECT_WINNER,     BODY_WINNER,
@@ -24,6 +24,9 @@ from email_templates import (
     SUBJECT_REMINDER,   BODY_REMINDER,
     SUBJECT_THANKS,     BODY_THANKS,
 )
+
+SPREADSHEET_ID = '1bSdZNp9eKd0LSW31A0BXENpOTiYYsR1K0DgHrzfE8h0'
+APPLICANTS_SHEET = '26summer応募者'
 
 RESEND_API_KEY = 're_67fDJotj_H9yrdVfb93TCWfry9Fhvtrm5'
 FROM_EMAIL     = 'crewre <crewre@modern-times.co>'
@@ -132,8 +135,8 @@ def send_bulk(recipients, subject, body_tpl, url_fields=None, is_loser=False):
 # Lottery with custom settings
 # ==============================
 
-def run_lottery_with_settings(shopify_path, paperform_path, slot_capacity_override=None):
-    """抽選実行。slot_capacity_override={slot_id: capacity} で空き枠を指定できる（二次用）"""
+def run_lottery_with_settings(shopify_path, paperform_path=None, slot_capacity_override=None, use_sheets=False):
+    """抽選実行。use_sheets=True でスプシから応募者を読み込み"""
     import lottery as _lot
 
     # 設定を一時的に反映
@@ -156,8 +159,11 @@ def run_lottery_with_settings(shopify_path, paperform_path, slot_capacity_overri
         _lot.SLOT_DEFS = {sid: name for sid, name in _lot.SLOT_DEFS.items()
                          if slot_capacity_override.get(sid, 0) > 0}
 
-    shopify    = load_shopify(shopify_path)
-    applicants = load_applicants(paperform_path, shopify)
+    shopify = load_shopify(shopify_path)
+    if use_sheets:
+        applicants = load_applicants_from_sheets(SPREADSHEET_ID, APPLICANTS_SHEET, shopify)
+    else:
+        applicants = load_applicants(paperform_path, shopify)
     random.seed()
     winners, losers = run_lottery(applicants)
 
@@ -300,41 +306,32 @@ if cur == 1:
         st.session_state.settings = s
         persist()
 
-    c1, c2 = st.columns(2)
-    shopify_file   = c1.file_uploader('Shopify 顧客CSV',  type='csv', key='s1')
-    paperform_file = c2.file_uploader('Paperform 応募CSV', type='csv', key='p1')
+    shopify_file = st.file_uploader('Shopify 顧客CSV', type='csv', key='s1')
 
-    if shopify_file and paperform_file:
-        # アップロードされたCSVのプレビュー
-        with st.expander('📋 アップロードCSV確認', expanded=False):
-            try:
-                shopify_file.seek(0)
-                sf_preview = pd.read_csv(shopify_file, nrows=2)
-                st.caption('Shopify CSV列:')
-                st.code(', '.join(sf_preview.columns.tolist()[:10]) + '...')
-                shopify_file.seek(0)
-            except Exception as e:
-                st.error(f'Shopify CSV読み込みエラー: {e}')
-            try:
-                paperform_file.seek(0)
-                pf_preview = pd.read_csv(paperform_file, nrows=2)
-                st.caption('Paperform CSV列:')
-                st.code(', '.join(pf_preview.columns.tolist()[:10]) + '...')
-                paperform_file.seek(0)
-            except Exception as e:
-                st.error(f'Paperform CSV読み込みエラー: {e}')
+    # スプシから応募者データを読み込み
+    st.caption(f'応募者データ: [Google Sheets](https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit) / シート: {APPLICANTS_SHEET}')
+    if st.button('📋 スプシから応募者を読み込み', key='load_sheets'):
+        try:
+            from sheets_helper import read_sheet
+            rows = read_sheet(SPREADSHEET_ID, APPLICANTS_SHEET)
+            st.session_state.sheets_loaded = True
+            st.session_state.sheets_count = len(rows)
+            st.success(f'✅ {len(rows)}名の応募者を読み込みました')
+        except Exception as e:
+            st.error(f'スプシ読み込みエラー: {e}')
 
+    if st.session_state.get('sheets_loaded'):
+        st.info(f'📊 応募者: {st.session_state.sheets_count}名（スプシから読み込み済み）')
+
+    if shopify_file and st.session_state.get('sheets_loaded'):
         if st.button('🎲 抽選実行', type='primary'):
             with st.spinner('抽選中…'):
                 try:
                     shopify_file.seek(0)
-                    paperform_file.seek(0)
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='wb') as sf:
                         sf.write(shopify_file.read()); sp = sf.name
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='wb') as pf:
-                        pf.write(paperform_file.read()); pp = pf.name
 
-                    winners, losers, _ = run_lottery_with_settings(sp, pp)
+                    winners, losers, _ = run_lottery_with_settings(sp, use_sheets=True)
                     st.session_state.winners    = winners
                     st.session_state.losers     = losers
                     st.session_state.sent_modes = []
@@ -344,9 +341,8 @@ if cur == 1:
                     import traceback
                     st.code(traceback.format_exc())
                 finally:
-                    for p in [sp, pp]:
-                        try: os.unlink(p)
-                        except: pass
+                    try: os.unlink(sp)
+                    except: pass
 
     if st.session_state.winners:
         winners = st.session_state.winners
@@ -367,6 +363,22 @@ if cur == 1:
             st.dataframe(pd.DataFrame([{
                 '氏名': l['name'], 'メール': l['email'], 'ステータス': l['status'],
             } for l in losers]), use_container_width=True, height=300)
+
+        st.divider()
+        st.subheader('結果をスプシに反映')
+        sent = st.session_state.sent_modes
+        if 'sheets_written' not in sent:
+            if st.button('📊 当選者・落選者をスプシに書き込み', type='primary', key='write_sheets'):
+                try:
+                    write_results_to_sheets(SPREADSHEET_ID, winners, losers)
+                    st.success(f'✅ 当選者{len(winners)}名・落選者{len(losers)}名をスプシに反映しました')
+                    st.session_state.sent_modes = sent + ['sheets_written']
+                    persist(); st.rerun()
+                except Exception as e:
+                    st.error(f'スプシ書き込みエラー: {e}')
+        else:
+            st.success('✅ スプシ反映済み')
+            st.caption(f'[スプレッドシートを開く](https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit)')
 
         st.divider()
         st.subheader('Shopify タグ付与')

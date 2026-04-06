@@ -25,6 +25,8 @@ from email_templates import (
     SUBJECT_THANKS,     BODY_THANKS,
 )
 
+SPREADSHEET_ID = '1bSdZNp9eKd0LSW31A0BXENpOTiYYsR1K0DgHrzfE8h0'
+
 RESEND_API_KEY = 're_67fDJotj_H9yrdVfb93TCWfry9Fhvtrm5'
 FROM_EMAIL     = 'crewre <crewre@modern-times.co>'
 STATE_FILE     = os.path.join(LOTTERY_DIR, 'lottery_state.json')
@@ -367,6 +369,33 @@ if cur == 1:
             st.dataframe(pd.DataFrame([{
                 '氏名': l['name'], 'メール': l['email'], 'ステータス': l['status'],
             } for l in losers]), use_container_width=True, height=300)
+
+        st.divider()
+        st.subheader('結果をスプシに反映')
+        sent = st.session_state.sent_modes
+        if 'sheets_written' not in sent:
+            if st.button('📊 当選者・落選者をスプシに書き込み', type='primary', key='write_sheets'):
+                try:
+                    from sheets_helper import write_sheet
+                    # 当選者シート
+                    w_headers = ['チェックインID', '氏名', 'メールアドレス', 'ステータス', '当選枠', 'ペア参加', '出欠']
+                    w_rows = [[w['checkin_id'], w['name'], w['email'], w['status'],
+                               w['slot'], 'あり' if w.get('is_pair') else '', '']
+                              for w in sorted(winners, key=lambda x: x['checkin_id'])]
+                    write_sheet(SPREADSHEET_ID, '当選者', w_headers, w_rows)
+                    # 落選者シート
+                    l_headers = ['氏名', 'メールアドレス', 'ステータス', '希望日時']
+                    l_rows = [[l['name'], l['email'], l['status'], l.get('preferred', '')]
+                              for l in losers]
+                    write_sheet(SPREADSHEET_ID, '落選者', l_headers, l_rows)
+                    st.success(f'✅ 当選者{len(winners)}名・落選者{len(losers)}名をスプシに反映しました')
+                    st.session_state.sent_modes = sent + ['sheets_written']
+                    persist(); st.rerun()
+                except Exception as e:
+                    st.error(f'スプシ書き込みエラー: {e}')
+        else:
+            st.success('✅ スプシ反映済み')
+            st.caption(f'[スプレッドシートを開く](https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit)')
 
         st.divider()
         st.subheader('Shopify タグ付与')

@@ -27,6 +27,12 @@ from email_templates import (
 
 SPREADSHEET_ID = '1bSdZNp9eKd0LSW31A0BXENpOTiYYsR1K0DgHrzfE8h0'
 
+# ブラックリスト（メールアドレスで照合）
+BLACKLIST = {
+    'hitomi880616@yahoo.co.jp': '秋山 眸',
+    'chulayumi722@gmail.com': '田口 裕美子',
+}
+
 RESEND_API_KEY = 're_67fDJotj_H9yrdVfb93TCWfry9Fhvtrm5'
 FROM_EMAIL     = 'crewre <crewre@modern-times.co>'
 STATE_FILE     = os.path.join(LOTTERY_DIR, 'lottery_state.json')
@@ -353,6 +359,13 @@ if cur == 1:
     if st.session_state.winners:
         winners = st.session_state.winners
         losers  = st.session_state.losers
+
+        # ブラックリスト該当者チェック
+        bl_winners = [w for w in winners if w['email'].lower() in BLACKLIST]
+        if bl_winners:
+            st.warning(f'⚠️ ブラックリスト該当者が {len(bl_winners)}名 当選しています')
+            for w in bl_winners:
+                st.caption(f'　🚫 {w["name"]}（{w["email"]}）→ {w["slot"]}　※登録名: {BLACKLIST[w["email"].lower()]}')
 
         m1, m2, m3 = st.columns(3)
         m1.metric('総応募者', f'{len(winners)+len(losers)}名')

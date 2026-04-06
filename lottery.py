@@ -239,14 +239,24 @@ def load_applicants(path, shopify):
             customer = shopify.get(email, {})
             status = classify(customer.get('spent', 0), customer.get('eccube_registered', ''))
 
+            # ペア参加判定（旧形式・新形式両対応）
+            pair_col = _find_col(clean, ['ペア参加を希望しますか？', '参加形式をお選びください', '参加形式']).strip()
+            is_pair = pair_col in ('希望する', 'ペア参加を希望する')
+
+            # 同伴者（新形式: 試着不可の付き添い。定員カウント外）
+            companion_name = _find_col(clean, ['同伴される方', '同伴者']).strip()
+            is_companion = pair_col == '同伴者様との参加を希望する' or bool(companion_name)
+
             applicants.append({
                 'name':      name,
                 'email':     email,
                 'preferred': preferred,
                 'status':    status,
                 'slot_str':  slot_str,
-                'is_pair':   _find_col(clean, ['ペア参加を希望しますか？', 'ペア参加']).strip() == '希望する',
-                'pair_name': _find_col(clean, ['ペアの方の氏名をお書きください', 'ペアの方の氏名', 'ペアのお名前']).strip(),
+                'is_pair':   is_pair,
+                'pair_name': _find_col(clean, ['ペアの方', 'ペアの方の氏名']).strip(),
+                'has_companion': is_companion,
+                'companion_name': companion_name,
             })
     return applicants
 

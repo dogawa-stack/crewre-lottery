@@ -294,7 +294,13 @@ def run_lottery(applicants):
             paired_emails.add(a['email'])
             paired_emails.add(partner['email'])
 
-    solos = [a for a in applicants if a['email'] not in paired_emails]
+    # ペア希望だが相手が見つからない人は落選扱い（ソロに入れない）
+    unmatched_pair_emails = set()
+    for a in applicants:
+        if a['is_pair'] and a['email'] not in paired_emails:
+            unmatched_pair_emails.add(a['email'])
+
+    solos = [a for a in applicants if a['email'] not in paired_emails and a['email'] not in unmatched_pair_emails]
 
     # 枠ごとのステータス別残り人数 + 総残り人数
     slot_status_remaining = {sid: dict(ALLOCATION) for sid in SLOT_DEFS}

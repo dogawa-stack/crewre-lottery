@@ -253,7 +253,7 @@ def load_applicants(path, shopify):
             is_pair = pair_col in ('希望する', 'ペア参加を希望する')
 
             # 同伴者（新形式: 試着不可の付き添い。定員カウント外）
-            companion_name = _find_col(clean, ['同伴される方', '同伴者']).strip()
+            companion_name = _find_col(clean, ['同伴される方', '同伴者', '同伴者氏名']).strip()
             is_companion = pair_col == '同伴者様との参加を希望する' or bool(companion_name)
 
             applicants.append({
@@ -263,7 +263,7 @@ def load_applicants(path, shopify):
                 'status':    status,
                 'slot_str':  slot_str,
                 'is_pair':   is_pair,
-                'pair_name': _find_col(clean, ['ペアの方', 'ペアの方の氏名']).strip(),
+                'pair_name': _find_col(clean, ['ペアの方', 'ペアの方の氏名', 'ペア氏名']).strip(),
                 'has_companion': is_companion,
                 'companion_name': companion_name,
             })

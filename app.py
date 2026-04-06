@@ -707,3 +707,23 @@ with st.sidebar:
         for k in list(st.session_state.keys()):
             del st.session_state[k]
         st.rerun()
+    st.divider()
+    with st.expander('📖 使い方'):
+        st.markdown('''
+**1次抽選の流れ**
+
+1. **イベント設定** — 開催日・スロット・定員を設定して保存
+2. **応募データ整理** — スプシでテスト・重複・エラーを弾きCSVをDL
+3. **アップロード** — Shopify顧客CSV + 応募者リストCSVをアップ
+4. **抽選実行** — 🎲ボタンを押す
+5. **スプシ反映** — 📊ボタンで当選/落選リストをスプシに書き出し
+
+**抽選ルール**
+- VIP → 潜在 → 新規 の優先順
+- ペア参加: 両者応募＆互いに記載 → 同枠2枠消費
+- ペア片方のみ → 落選
+- 同伴者: 定員カウント外
+
+[📄 詳細マニュアル（Notion）](https://www.notion.so/33a69b833f5e8192a0eacf1d4283fb2d)
+''')
+

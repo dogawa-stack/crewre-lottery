@@ -305,9 +305,30 @@ if cur == 1:
     paperform_file = c2.file_uploader('Paperform 応募CSV', type='csv', key='p1')
 
     if shopify_file and paperform_file:
+        # アップロードされたCSVのプレビュー
+        with st.expander('📋 アップロードCSV確認', expanded=False):
+            try:
+                shopify_file.seek(0)
+                sf_preview = pd.read_csv(shopify_file, nrows=2)
+                st.caption('Shopify CSV列:')
+                st.code(', '.join(sf_preview.columns.tolist()[:10]) + '...')
+                shopify_file.seek(0)
+            except Exception as e:
+                st.error(f'Shopify CSV読み込みエラー: {e}')
+            try:
+                paperform_file.seek(0)
+                pf_preview = pd.read_csv(paperform_file, nrows=2)
+                st.caption('Paperform CSV列:')
+                st.code(', '.join(pf_preview.columns.tolist()[:10]) + '...')
+                paperform_file.seek(0)
+            except Exception as e:
+                st.error(f'Paperform CSV読み込みエラー: {e}')
+
         if st.button('🎲 抽選実行', type='primary'):
             with st.spinner('抽選中…'):
                 try:
+                    shopify_file.seek(0)
+                    paperform_file.seek(0)
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='wb') as sf:
                         sf.write(shopify_file.read()); sp = sf.name
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='wb') as pf:
@@ -320,6 +341,8 @@ if cur == 1:
                     persist(); st.rerun()
                 except Exception as e:
                     st.error(f'エラー: {e}')
+                    import traceback
+                    st.code(traceback.format_exc())
                 finally:
                     for p in [sp, pp]:
                         try: os.unlink(p)

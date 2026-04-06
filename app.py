@@ -744,40 +744,5 @@ with st.sidebar:
 
 [📄 詳細マニュアル（Notion）](https://www.notion.so/33a69b833f5e8192a0eacf1d4283fb2d)
 ''')
-    with st.expander('📋 テンプレート集'):
-        tpl_tab1, tpl_tab2, tpl_tab3 = st.tabs(['メール', 'フォーム', '告知'])
-        with tpl_tab1:
-            st.caption('イベントごとに email_templates.py を編集')
-            for label, subj, body in [
-                ('当選メール', SUBJECT_WINNER, BODY_WINNER),
-                ('落選メール', SUBJECT_LOSER, BODY_LOSER),
-                ('二次当選メール', SUBJECT_WINNER_2ND, BODY_WINNER_2ND),
-                ('直前案内メール', SUBJECT_REMINDER, BODY_REMINDER),
-                ('お礼メール', SUBJECT_THANKS, BODY_THANKS),
-            ]:
-                with st.expander(f'{label}（件名: {subj}）'):
-                    st.code(body, language=None)
-        with tpl_tab2:
-            st.markdown('''
-**応募フォーム（Paperform）**
-[テンプレ元](https://paperform.co/) ※要ログイン・前回フォームをコピー
-
-**出欠確認フォーム**
-[テンプレ元](https://docs.google.com/forms/d/1yLfnvqV9pE9Cdf4E1DYTNu_Wxas8pURYPFaO8v7XlhI/edit)
-
-**参加後アンケート**
-準備中
-
-※イベントごとにコピーして日程・会場を書き換えて使用
-''')
-        with tpl_tab3:
-            st.markdown('''
-**newsページ告知**
-準備中
-
-**SNS告知文**
-準備中
-
-※過去の告知を参考にテンプレ化予定
-''')
+    st.markdown('[📋 テンプレート集（Notion）](https://www.notion.so/33a69b833f5e8192a0eacf1d4283fb2d)')
 

@@ -164,19 +164,20 @@ def load_shopify(path):
     """Shopify CSV → {email: {name, spent, eccube_registered}} の辞書（EC-CUBEデータと合算）"""
     eccube = load_eccube()
     customers = {}
-    with open(path, encoding='utf-8') as f:
+    with open(path, encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            email = row['Email'].strip().lower()
+            clean = {k.strip(): v for k, v in row.items() if k}
+            email = _find_col(clean, ['Email', 'メールアドレス']).strip().lower()
             if email:
                 try:
-                    shopify_spent = float(str(row['Total Spent']).replace(',', '') or 0)
+                    shopify_spent = float(str(_find_col(clean, ['Total Spent', 'Amount spent'])).replace(',', '') or 0)
                 except:
                     shopify_spent = 0
                 ec = eccube.get(email, {})
                 total = shopify_spent + ec.get('spent', 0)
                 customers[email] = {
-                    'name': f"{row['First Name']} {row['Last Name']}".strip(),
+                    'name': f"{_find_col(clean, ['First Name'])} {_find_col(clean, ['Last Name'])}".strip(),
                     'spent': total,
                     'eccube_registered': ec.get('registered', ''),
                 }
@@ -200,15 +201,37 @@ def parse_preferred_slots(slot_str):
     return slot_ids
 
 
+def _find_col(row, candidates):
+    """複数の候補列名から最初に見つかった列の値を返す。部分一致も対応。"""
+    keys = list(row.keys())
+    # 完全一致
+    for c in candidates:
+        if c in row:
+            return row[c]
+    # 部分一致（候補がキーの先頭に含まれるか）
+    for c in candidates:
+        for k in keys:
+            if k and c in k:
+                return row[k]
+    return ''
+
 def load_applicants(path, shopify):
     """Paperform CSV → 応募者リストを返す"""
     applicants = []
-    with open(path, encoding='utf-8') as f:
+    # BOM対応: utf-8-sig はBOMがあれば除去、なくてもOK
+    with open(path, encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            email = row['メールアドレス'].strip().lower()
-            name  = row['氏名'].strip()
-            slot_str = row['希望日時'].strip()
+            # 列名の空白・不可視文字を除去して検索
+            clean = {k.strip(): v for k, v in row.items() if k}
+
+            email = _find_col(clean, ['メールアドレス', 'メール', 'Email']).strip().lower()
+            name  = _find_col(clean, ['氏名', 'お名前']).strip()
+            slot_str = _find_col(clean, ['希望日時', 'ご希望のご来場日', '来場日']).strip()
+
+            if not email or not name:
+                continue
+
             preferred = parse_preferred_slots(slot_str)
             if not preferred:
                 preferred = set(range(1, 33))  # 指定なし = 全枠対象
@@ -222,8 +245,8 @@ def load_applicants(path, shopify):
                 'preferred': preferred,
                 'status':    status,
                 'slot_str':  slot_str,
-                'is_pair':   row['ペア参加を希望しますか？'].strip() == '希望する',
-                'pair_name': row['ペアの方の氏名をお書きください'].strip(),
+                'is_pair':   _find_col(clean, ['ペア参加を希望しますか？', 'ペア参加']).strip() == '希望する',
+                'pair_name': _find_col(clean, ['ペアの方の氏名をお書きください', 'ペアの方の氏名', 'ペアのお名前']).strip(),
             })
     return applicants
 

@@ -378,16 +378,17 @@ if cur == 1:
                 try:
                     from sheets_helper import write_sheet
                     # 当選者シート
-                    w_headers = ['チェックインID', '氏名', 'メールアドレス', 'ステータス', '当選枠', 'ペア参加', '出欠']
+                    w_headers = ['チェックインID', '氏名', 'メールアドレス', 'ステータス', '当選枠', 'ペア参加', '同伴者名', '出欠']
                     w_rows = [[w['checkin_id'], w['name'], w['email'], w['status'],
-                               w['slot'], 'あり' if w.get('is_pair') else '', '']
+                               w['slot'], 'あり' if w.get('is_pair') else '',
+                               w.get('companion_name', ''), '']
                               for w in sorted(winners, key=lambda x: x['checkin_id'])]
-                    write_sheet(SPREADSHEET_ID, '当選者', w_headers, w_rows)
+                    write_sheet(SPREADSHEET_ID, '当選リスト', w_headers, w_rows)
                     # 落選者シート
                     l_headers = ['氏名', 'メールアドレス', 'ステータス', '希望日時']
                     l_rows = [[l['name'], l['email'], l['status'], l.get('preferred', '')]
                               for l in losers]
-                    write_sheet(SPREADSHEET_ID, '落選者', l_headers, l_rows)
+                    write_sheet(SPREADSHEET_ID, '落選リスト', l_headers, l_rows)
                     st.success(f'✅ 当選者{len(winners)}名・落選者{len(losers)}名をスプシに反映しました')
                     st.session_state.sent_modes = sent + ['sheets_written']
                     persist(); st.rerun()

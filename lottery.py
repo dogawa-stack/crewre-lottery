@@ -316,6 +316,7 @@ def run_lottery(applicants):
             'slot':       SLOT_DEFS[sid],
             'is_pair':    applicant['is_pair'],
             'pair_name':  applicant['pair_name'],
+            'companion_name': applicant.get('companion_name', ''),
         })
         assigned.add(applicant['email'])
         checkin_id += 1

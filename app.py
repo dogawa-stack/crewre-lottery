@@ -228,17 +228,15 @@ if cur == 1:
 
         st.divider()
 
-        # --- スロット自動生成 ---
-        st.subheader('⏰ スロット自動生成')
-        gc1, gc2, gc3, gc4 = st.columns(4)
+        # --- 共通設定 ---
+        st.subheader('⏰ スロット設定')
+        gc1, gc2, gc3 = st.columns(3)
         start_h = gc1.number_input('開始時刻（時）', min_value=0, max_value=23, value=10, step=1)
         start_m = gc2.number_input('開始時刻（分）', min_value=0, max_value=59, value=0, step=30)
         interval = gc3.number_input('間隔（分）', min_value=10, max_value=120, value=30, step=5)
-        duration = gc4.number_input('1枠の長さ（分）', min_value=30, max_value=180, value=60, step=30)
 
-        gc5, gc6 = st.columns(2)
-        end_h = gc5.number_input('終了時刻（時）', min_value=0, max_value=23, value=19, step=1)
-        end_m = gc6.number_input('終了時刻（分）', min_value=0, max_value=59, value=0, step=30)
+        gc4, _ = st.columns(2)
+        duration = gc4.number_input('1枠の長さ（分）', min_value=30, max_value=180, value=60, step=30)
 
         def generate_slots(s_h, s_m, e_h, e_m, intv, dur):
             slots = []
@@ -251,21 +249,24 @@ if cur == 1:
                 cur_min += intv
             return slots
 
-        generated = generate_slots(start_h, start_m, end_h, end_m, interval, duration)
+        st.divider()
 
-        if generated:
-            st.caption(f'生成されるスロット: {len(generated)}枠')
-
-        # --- 日ごとのスロット選択 ---
+        # --- 日ごとの終了時刻 + スロット選択 ---
         times_inputs = []
         for i, day in enumerate(day_labels):
-            st.markdown(f'**{day}**')
+            st.markdown(f'### {day}')
+            ec1, ec2 = st.columns(2)
+            default_end_h = 19 if i == 0 else 18
+            day_end_h = ec1.number_input(f'閉店時刻（時）', min_value=0, max_value=23, value=default_end_h, step=1, key=f'end_h_{i}')
+            day_end_m = ec2.number_input(f'閉店時刻（分）', min_value=0, max_value=59, value=0, step=30, key=f'end_m_{i}')
+
+            day_slots = generate_slots(start_h, start_m, day_end_h, day_end_m, interval, duration)
+
             existing = slot_times_per_day[i] if i < len(slot_times_per_day) else []
-            # 既存 or 生成済みスロットをデフォルトにする
-            default_slots = existing if existing else generated
+            default_slots = existing if existing else day_slots
             selected = []
             slot_cols = st.columns(4)
-            for j, slot in enumerate(generated):
+            for j, slot in enumerate(day_slots):
                 checked = slot in default_slots
                 col = slot_cols[j % 4]
                 if col.checkbox(f'{SLOT_NAMES[j]} {slot}' if j < len(SLOT_NAMES) else slot,

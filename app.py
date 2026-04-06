@@ -396,6 +396,9 @@ if cur == 1:
         else:
             st.success('✅ スプシ反映済み')
             st.caption(f'[スプレッドシートを開く](https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit)')
+            if st.button('🔄 スプシに再反映', key='rewrite_sheets'):
+                st.session_state.sent_modes = [m for m in st.session_state.sent_modes if m != 'sheets_written']
+                persist(); st.rerun()
 
         st.divider()
         st.subheader('Shopify タグ付与')

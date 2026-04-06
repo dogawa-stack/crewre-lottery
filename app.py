@@ -763,4 +763,14 @@ with st.sidebar:
         with mail_tab5:
             st.caption(f'件名: {SUBJECT_THANKS}')
             st.code(BODY_THANKS, language=None)
+    with st.expander('📋 フォームテンプレート'):
+        st.markdown('''
+**出欠確認フォーム（テンプレ元）**
+[Google Form](https://docs.google.com/forms/d/1yLfnvqV9pE9Cdf4E1DYTNu_Wxas8pURYPFaO8v7XlhI/edit)
+
+**参加後アンケート（テンプレ元）**
+準備中
+
+※イベントごとにコピーして日程・会場を書き換えて使用
+''')
 

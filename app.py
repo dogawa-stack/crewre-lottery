@@ -428,43 +428,6 @@ if cur == 1:
                 persist(); st.rerun()
 
         st.divider()
-        st.subheader('Shopify タグ付与')
-        st.caption(f'ストア: {SHOP}　タグ: {TAG}')
-        sent = st.session_state.sent_modes
-        if 'shopify_tag' not in sent:
-            if st.button('🏷️ 当選者にタグ付与', type='primary', key='shopify_tag_btn'):
-                emails = [w['email'] for w in winners]
-                bar  = st.progress(0)
-                info = st.empty()
-                ok, already, not_found, errors = 0, 0, 0, []
-                for i, email in enumerate(emails):
-                    try:
-                        customer = get_customer_by_email(email)
-                        if not customer:
-                            not_found += 1
-                        else:
-                            added = add_tag(customer['id'], customer.get('tags', ''), TAG)
-                            if added:
-                                ok += 1
-                            else:
-                                already += 1
-                    except Exception as e:
-                        errors.append(f'{email}: {e}')
-                    bar.progress((i + 1) / len(emails))
-                    info.caption(f'処理中… {i+1}/{len(emails)}')
-                    time.sleep(0.3)
-                bar.empty(); info.empty()
-                if not errors:
-                    st.success(f'✅ 付与={ok} / 既存={already} / 未登録={not_found}')
-                    st.session_state.sent_modes = sent + ['shopify_tag']
-                    persist(); st.rerun()
-                else:
-                    st.warning(f'付与={ok} / 既存={already} / 未登録={not_found} / エラー={len(errors)}')
-                    st.error('\n'.join(errors))
-        else:
-            st.success('✅ Shopifyタグ付与済み')
-
-        st.divider()
         st.subheader('メール送信')
         st.warning('⚠️ メール送信は取り消しできません。本番時のみ実行してください。')
         uf = st.session_state.url_fields
@@ -548,6 +511,48 @@ elif cur == 2:
                              use_container_width=True)
 
     absent_count = len(st.session_state.get('absent_winner_emails', []))
+
+    # 来場確定者にShopifyタグ付与
+    st.divider()
+    st.subheader('Shopify タグ付与（来場確定者）')
+    absent_emails = set(st.session_state.get('absent_winner_emails', []))
+    attending = [w for w in st.session_state.winners if w['email'].lower() not in absent_emails]
+    st.caption(f'ストア: {SHOP}　タグ: {TAG}　対象: {len(attending)}名（来場確定者のみ）')
+    sent = st.session_state.sent_modes
+    if 'shopify_tag' not in sent:
+        if st.button('🏷️ 来場確定者にタグ付与', type='primary', key='shopify_tag_btn'):
+            emails = [w['email'] for w in attending]
+            bar  = st.progress(0)
+            info = st.empty()
+            ok, already, not_found, errors = 0, 0, 0, []
+            for i, email in enumerate(emails):
+                try:
+                    customer = get_customer_by_email(email)
+                    if not customer:
+                        not_found += 1
+                    else:
+                        added = add_tag(customer['id'], customer.get('tags', ''), TAG)
+                        if added:
+                            ok += 1
+                        else:
+                            already += 1
+                except Exception as e:
+                    errors.append(f'{email}: {e}')
+                bar.progress((i + 1) / len(emails))
+                info.caption(f'処理中… {i+1}/{len(emails)}')
+                time.sleep(0.3)
+            bar.empty(); info.empty()
+            if not errors:
+                st.success(f'✅ 付与={ok} / 既存={already} / 未登録={not_found}')
+                st.session_state.sent_modes = sent + ['shopify_tag']
+                persist(); st.rerun()
+            else:
+                st.warning(f'付与={ok} / 既存={already} / 未登録={not_found} / エラー={len(errors)}')
+                st.error('\n'.join(errors))
+    else:
+        st.success('✅ Shopifyタグ付与済み')
+
+    st.divider()
     c1, c2 = st.columns(2)
     with c1:
         if st.button('← Phase 1に戻る'):

@@ -202,13 +202,18 @@ def parse_preferred_slots(slot_str):
 
 
 def _find_col(row, candidates):
-    """複数の候補列名から最初に見つかった列の値を返す。部分一致も対応。"""
+    """複数の候補列名から最初に見つかった列の値を返す。"""
     keys = list(row.keys())
     # 完全一致
     for c in candidates:
         if c in row:
             return row[c]
-    # 部分一致（候補がキーの先頭に含まれるか）
+    # 前方一致を優先（キーが候補で始まるか）
+    for c in candidates:
+        for k in keys:
+            if k and k.startswith(c):
+                return row[k]
+    # 部分一致（フォールバック）
     for c in candidates:
         for k in keys:
             if k and c in k:

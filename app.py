@@ -302,7 +302,7 @@ if cur == 1:
 
     c1, c2 = st.columns(2)
     shopify_file   = c1.file_uploader('Shopify 顧客CSV',  type='csv', key='s1')
-    paperform_file = c2.file_uploader('Paperform 応募CSV', type='csv', key='p1')
+    paperform_file = c2.file_uploader('応募者リストCSV', type='csv', key='p1')
 
     if shopify_file and paperform_file:
         # アップロードされたCSVのプレビュー

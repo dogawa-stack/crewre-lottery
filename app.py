@@ -139,6 +139,61 @@ def send_bulk(recipients, subject, body_tpl, url_fields=None, is_loser=False):
     bar.empty(); info.empty()
     return ok, ng, errors
 
+def load_winners_from_sheets():
+    """スプシから当選者を読み込む"""
+    from sheets_helper import _api
+    import urllib.parse
+    base = f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}"
+    winners = []
+    for sheet_name in ['当選リスト 5月9日', '当選リスト 5月10日']:
+        encoded = urllib.parse.quote(sheet_name)
+        data = _api('GET', f'{base}/values/{encoded}')
+        rows = data.get('values', [])
+        if not rows:
+            continue
+        header = rows[0]
+        idx = {h: i for i, h in enumerate(header)}
+        for r in rows[1:]:
+            while len(r) < len(header):
+                r.append('')
+            email = r[idx.get('メールアドレス', -1)].strip()
+            if not email:
+                continue
+            winners.append({
+                'name': r[idx.get('氏名', -1)],
+                'email': email,
+                'slot': r[idx.get('当選枠', -1)],
+                'checkin_id': r[idx.get('チェックインID', -1)],
+                'status': r[idx.get('ステータス', -1)],
+            })
+    return winners
+
+def load_losers_from_sheets():
+    """スプシから落選者を読み込む"""
+    from sheets_helper import _api
+    import urllib.parse
+    base = f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}"
+    encoded = urllib.parse.quote('落選リスト')
+    data = _api('GET', f'{base}/values/{encoded}')
+    rows = data.get('values', [])
+    if not rows:
+        return []
+    header = rows[0]
+    idx = {h: i for i, h in enumerate(header)}
+    losers = []
+    for r in rows[1:]:
+        while len(r) < len(header):
+            r.append('')
+        email = r[idx.get('メールアドレス', -1)].strip()
+        if not email:
+            continue
+        losers.append({
+            'name': r[idx.get('氏名', -1)],
+            'email': email,
+            'status': r[idx.get('ステータス', -1)],
+        })
+    return losers
+
 # ==============================
 # Lottery with custom settings
 # ==============================
@@ -480,7 +535,7 @@ if cur == 1:
                 persist(); st.rerun()
 
         st.divider()
-        st.subheader('メール送信')
+        st.subheader('メール送信（スプシから読み込み）')
         st.warning('⚠️ メール送信は取り消しできません。本番時のみ実行してください。')
         uf = st.session_state.url_fields
         c1, c2 = st.columns(2)
@@ -499,25 +554,35 @@ if cur == 1:
                     if not uf.get('attendance_url'):
                         st.warning('出欠フォームURLを入力してください')
                     else:
-                        ok, ng, errs = send_bulk(winners, SUBJECT_WINNER, BODY_WINNER, uf)
-                        if ng == 0:
-                            st.success(f'✅ {ok}件送信完了')
-                            st.session_state.sent_modes = sent + ['winner']
-                            persist(); st.rerun()
-                        else:
-                            st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+                        try:
+                            sheet_winners = load_winners_from_sheets()
+                            st.caption(f'スプシから{len(sheet_winners)}名の当選者を読み込みました')
+                            ok, ng, errs = send_bulk(sheet_winners, SUBJECT_WINNER, BODY_WINNER, uf)
+                            if ng == 0:
+                                st.success(f'✅ {ok}件送信完了')
+                                st.session_state.sent_modes = sent + ['winner']
+                                persist(); st.rerun()
+                            else:
+                                st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+                        except Exception as e:
+                            st.error(f'スプシ読み込みエラー: {e}')
             else:
                 st.success('✅ 当選メール送信済み')
         with c2:
             if 'loser' not in sent:
                 if st.button('📨 落選メール送信', key='bl1', disabled=not mail_unlock):
-                    ok, ng, errs = send_bulk(losers, SUBJECT_LOSER, BODY_LOSER, is_loser=True)
-                    if ng == 0:
-                        st.success(f'✅ {ok}件送信完了')
-                        st.session_state.sent_modes = sent + ['loser']
-                        persist(); st.rerun()
-                    else:
-                        st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+                    try:
+                        sheet_losers = load_losers_from_sheets()
+                        st.caption(f'スプシから{len(sheet_losers)}名の落選者を読み込みました')
+                        ok, ng, errs = send_bulk(sheet_losers, SUBJECT_LOSER, BODY_LOSER, is_loser=True)
+                        if ng == 0:
+                            st.success(f'✅ {ok}件送信完了')
+                            st.session_state.sent_modes = sent + ['loser']
+                            persist(); st.rerun()
+                        else:
+                            st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+                    except Exception as e:
+                        st.error(f'スプシ読み込みエラー: {e}')
             else:
                 st.success('✅ 落選メール送信済み')
 

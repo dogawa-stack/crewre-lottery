@@ -467,7 +467,9 @@ if cur == 1:
                     st.session_state.sent_modes = sent + ['sheets_written']
                     persist(); st.rerun()
                 except Exception as e:
+                    import traceback
                     st.error(f'スプシ書き込みエラー: {e}')
+                    st.code(traceback.format_exc())
         else:
             st.success('✅ スプシ反映済み')
             st.caption(f'[スプレッドシートを開く](https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit)')

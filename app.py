@@ -424,8 +424,8 @@ if cur == 1:
             if st.button('📊 当選者・落選者をスプシに書き込み', type='primary', key='write_sheets'):
                 try:
                     from sheets_helper import write_sheet
-                    # 当選者シート（日別に分割、枠ごとにグループ化）
-                    w_headers = ['チェックインID', '氏名', 'メールアドレス', 'ステータス', '当選枠', 'ペア相手', '同伴者名', '出欠']
+                    # 当選者シート（日別に分割、枠ごとにグループ化、枠番号付き）
+                    w_headers = ['枠', 'チェックインID', '氏名', 'メールアドレス', 'ステータス', '当選枠', 'ペア相手', '同伴者名', '出欠']
                     sorted_winners = sorted(winners, key=lambda x: x['checkin_id'])
                     email_to_name = {w['email']: w['name'] for w in sorted_winners}
 
@@ -434,7 +434,6 @@ if cur == 1:
                     day_winners = defaultdict(list)
                     for w in sorted_winners:
                         slot = w.get('slot', '')
-                        # slotから日付部分を抽出（例: "5/9(土) ② 10:30〜11:30" → "5月9日"）
                         day_label = '不明'
                         if '5/9' in slot:
                             day_label = '5月9日'
@@ -445,15 +444,18 @@ if cur == 1:
                     for day_label, dw in sorted(day_winners.items()):
                         w_rows = []
                         current_slot = None
+                        slot_num = 0
                         for w in dw:
-                            if current_slot and current_slot != w.get('slot_id'):
-                                w_rows.append([''] * len(w_headers))
-                            current_slot = w.get('slot_id')
+                            if current_slot != w.get('slot_id'):
+                                if current_slot is not None:
+                                    w_rows.append([''] * len(w_headers))
+                                current_slot = w.get('slot_id')
+                                slot_num += 1
                             pair_display = ''
                             if w.get('is_pair') and w.get('pair_name'):
                                 pair_display = w['pair_name']
                             w_rows.append([
-                                w['checkin_id'], w['name'], w['email'], w['status'],
+                                slot_num, w['checkin_id'], w['name'], w['email'], w['status'],
                                 w['slot'], pair_display,
                                 w.get('companion_name', ''), '',
                             ])

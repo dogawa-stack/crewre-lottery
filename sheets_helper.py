@@ -82,6 +82,16 @@ def write_sheet(spreadsheet_id, sheet_name, headers, rows):
         sheet_id = existing[sheet_name]
         encoded = urllib.parse.quote(sheet_name)
         _api("POST", f"{base}/values/{encoded}:clear", {})
+        # 書式もクリア（前のデータのハイライト残りを防ぐ）
+        _api("POST", f"{base}:batchUpdate", {
+            "requests": [{
+                "repeatCell": {
+                    "range": {"sheetId": sheet_id},
+                    "cell": {"userEnteredFormat": {}},
+                    "fields": "userEnteredFormat"
+                }
+            }]
+        })
 
     encoded = urllib.parse.quote(sheet_name)
     all_rows = [headers] + rows

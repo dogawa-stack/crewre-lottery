@@ -82,16 +82,6 @@ def write_sheet(spreadsheet_id, sheet_name, headers, rows):
         sheet_id = existing[sheet_name]
         encoded = urllib.parse.quote(sheet_name)
         _api("POST", f"{base}/values/{encoded}:clear", {})
-        # 書式もクリア（前のデータのハイライト残りを防ぐ）
-        _api("POST", f"{base}:batchUpdate", {
-            "requests": [{
-                "repeatCell": {
-                    "range": {"sheetId": sheet_id},
-                    "cell": {"userEnteredFormat": {}},
-                    "fields": "userEnteredFormat"
-                }
-            }]
-        })
 
     encoded = urllib.parse.quote(sheet_name)
     all_rows = [headers] + rows
@@ -99,27 +89,35 @@ def write_sheet(spreadsheet_id, sheet_name, headers, rows):
         "values": all_rows
     })
 
-    _api("POST", f"{base}:batchUpdate", {
-        "requests": [
-            {
-                "repeatCell": {
-                    "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1},
-                    "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
-                    "fields": "userEnteredFormat.textFormat.bold"
-                }
-            },
-            {
-                "updateSheetProperties": {
-                    "properties": {"sheetId": sheet_id, "gridProperties": {"frozenRowCount": 1}},
-                    "fields": "gridProperties.frozenRowCount"
-                }
-            },
-            {
-                "autoResizeDimensions": {
-                    "dimensions": {"sheetId": sheet_id, "dimension": "COLUMNS",
-                                   "startIndex": 0, "endIndex": len(headers)}
-                }
-            },
-        ]
-    })
+    data_end_row = len(all_rows)
+    requests = [
+        {
+            "repeatCell": {
+                "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1},
+                "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
+                "fields": "userEnteredFormat.textFormat.bold"
+            }
+        },
+        {
+            "updateSheetProperties": {
+                "properties": {"sheetId": sheet_id, "gridProperties": {"frozenRowCount": 1}},
+                "fields": "gridProperties.frozenRowCount"
+            }
+        },
+        {
+            "autoResizeDimensions": {
+                "dimensions": {"sheetId": sheet_id, "dimension": "COLUMNS",
+                               "startIndex": 0, "endIndex": len(headers)}
+            }
+        },
+        # データ行より後ろの書式をクリア（前回データの残り対策）
+        {
+            "repeatCell": {
+                "range": {"sheetId": sheet_id, "startRowIndex": data_end_row, "endRowIndex": data_end_row + 100},
+                "cell": {"userEnteredFormat": {}},
+                "fields": "userEnteredFormat"
+            }
+        },
+    ]
+    _api("POST", f"{base}:batchUpdate", {"requests": requests})
     return sheet_id

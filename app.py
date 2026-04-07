@@ -234,7 +234,7 @@ if cur == 1:
                 if not test_email:
                     st.warning('メールアドレスを入力してください')
                 else:
-                    body = fill_template(BODY_WINNER, 'テスト太郎', '5/9(金) 13:00〜14:00', 'A-001', uf)
+                    body = fill_template(BODY_WINNER, 'テスト太郎', '5/9(土) 13:00〜14:00', 'A-001', uf)
                     if send_one(test_email, '【テスト】' + SUBJECT_WINNER, body):
                         st.success(f'✅ テスト当選メールを {test_email} に送信しました')
                     else:
@@ -424,26 +424,40 @@ if cur == 1:
             if st.button('📊 当選者・落選者をスプシに書き込み', type='primary', key='write_sheets'):
                 try:
                     from sheets_helper import write_sheet
-                    # 当選者シート（枠ごとにグループ化、ペア相手の名前表示、枠間に空行）
+                    # 当選者シート（日別に分割、枠ごとにグループ化）
                     w_headers = ['チェックインID', '氏名', 'メールアドレス', 'ステータス', '当選枠', 'ペア相手', '同伴者名', '出欠']
                     sorted_winners = sorted(winners, key=lambda x: x['checkin_id'])
-                    w_rows = []
-                    # ペア相手を名前で引けるようにする
                     email_to_name = {w['email']: w['name'] for w in sorted_winners}
-                    current_slot = None
+
+                    # 日付ごとに当選者を振り分け
+                    from collections import defaultdict
+                    day_winners = defaultdict(list)
                     for w in sorted_winners:
-                        if current_slot and current_slot != w.get('slot_id'):
-                            w_rows.append([''] * len(w_headers))  # 枠間の空行
-                        current_slot = w.get('slot_id')
-                        pair_display = ''
-                        if w.get('is_pair') and w.get('pair_name'):
-                            pair_display = w['pair_name']
-                        w_rows.append([
-                            w['checkin_id'], w['name'], w['email'], w['status'],
-                            w['slot'], pair_display,
-                            w.get('companion_name', ''), '',
-                        ])
-                    write_sheet(SPREADSHEET_ID, '当選リスト', w_headers, w_rows)
+                        slot = w.get('slot', '')
+                        # slotから日付部分を抽出（例: "5/9(土) ② 10:30〜11:30" → "5月9日"）
+                        day_label = '不明'
+                        if '5/9' in slot:
+                            day_label = '5月9日'
+                        elif '5/10' in slot:
+                            day_label = '5月10日'
+                        day_winners[day_label].append(w)
+
+                    for day_label, dw in sorted(day_winners.items()):
+                        w_rows = []
+                        current_slot = None
+                        for w in dw:
+                            if current_slot and current_slot != w.get('slot_id'):
+                                w_rows.append([''] * len(w_headers))
+                            current_slot = w.get('slot_id')
+                            pair_display = ''
+                            if w.get('is_pair') and w.get('pair_name'):
+                                pair_display = w['pair_name']
+                            w_rows.append([
+                                w['checkin_id'], w['name'], w['email'], w['status'],
+                                w['slot'], pair_display,
+                                w.get('companion_name', ''), '',
+                            ])
+                        write_sheet(SPREADSHEET_ID, f'当選リスト {day_label}', w_headers, w_rows)
                     # 落選者シート
                     l_headers = ['氏名', 'メールアドレス', 'ステータス', '希望日時']
                     l_rows = [[l['name'], l['email'], l['status'], l.get('preferred', '')]

@@ -105,10 +105,13 @@ def fill_template(body, name, slot='', checkin_id='', url_fields=None):
     return result
 
 def send_one(to_email, subject, body):
+    # テキストをHTMLに変換（開封トラッキング用）
+    html_body = body.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>\n')
+    html_body = f'<div style="font-family: sans-serif; font-size: 14px; line-height: 1.8;">{html_body}</div>'
     resp = requests.post(
         'https://api.resend.com/emails',
         headers={'Authorization': f'Bearer {RESEND_API_KEY}', 'Content-Type': 'application/json'},
-        json={'from': FROM_EMAIL, 'to': [to_email], 'subject': subject, 'text': body},
+        json={'from': FROM_EMAIL, 'to': [to_email], 'subject': subject, 'text': body, 'html': html_body},
     )
     return resp.status_code == 200
 
@@ -215,6 +218,37 @@ st.divider()
 
 if cur == 1:
     st.header('① 一次抽選')
+
+    # テスト送信（抽選結果に依存しない）
+    with st.expander('🧪 テスト送信', expanded=False):
+        st.caption('ダミーデータで自分宛にテストメールを送信して、内容を確認できます。')
+        test_email = st.text_input('送信先メールアドレス', placeholder='自分のメールアドレスを入力', key='test_email_1')
+        uf = st.session_state.url_fields
+        c1, c2 = st.columns(2)
+        uf['attendance_url']      = c1.text_input('出欠フォームURL（テスト用）', value=uf.get('attendance_url', ''), key='test_att_url')
+        uf['attendance_deadline'] = c2.text_input('回答締切（テスト用）',        value=uf.get('attendance_deadline', ''), key='test_att_dl')
+        st.session_state.url_fields = uf; persist()
+        test_cols = st.columns(2)
+        with test_cols[0]:
+            if st.button('🧪 当選メール テスト送信', key='test_winner_1'):
+                if not test_email:
+                    st.warning('メールアドレスを入力してください')
+                else:
+                    body = fill_template(BODY_WINNER, 'テスト太郎', '5/9(金) 13:00〜14:00', 'A-001', uf)
+                    if send_one(test_email, '【テスト】' + SUBJECT_WINNER, body):
+                        st.success(f'✅ テスト当選メールを {test_email} に送信しました')
+                    else:
+                        st.error('❌ 送信に失敗しました')
+        with test_cols[1]:
+            if st.button('🧪 落選メール テスト送信', key='test_loser_1'):
+                if not test_email:
+                    st.warning('メールアドレスを入力してください')
+                else:
+                    body = fill_template(BODY_LOSER, 'テスト太郎')
+                    if send_one(test_email, '【テスト】' + SUBJECT_LOSER, body):
+                        st.success(f'✅ テスト落選メールを {test_email} に送信しました')
+                    else:
+                        st.error('❌ 送信に失敗しました')
 
     # イベント設定
     with st.expander('📅 イベント設定（日程・時間帯）', expanded=False):

@@ -274,10 +274,10 @@ st.divider()
 if cur == 1:
     st.header('① 一次抽選')
 
-    # テスト送信（抽選結果に依存しない）
+    # テスト送信（スプシのID1のデータで送信）
     with st.expander('🧪 テスト送信', expanded=False):
-        st.caption('ダミーデータで自分宛にテストメールを送信して、内容を確認できます。')
-        test_email = st.text_input('送信先メールアドレス', placeholder='自分のメールアドレスを入力', key='test_email_1')
+        st.caption('スプシのチェックインID 1のデータで、自分宛にテストメールを送信します。')
+        test_email = st.text_input('送信先メールアドレス', value='d.ogawa@modern-times.co', key='test_email_1')
         uf = st.session_state.url_fields
         c1, c2 = st.columns(2)
         uf['attendance_url']      = c1.text_input('出欠フォームURL（テスト用）', value=uf.get('attendance_url', ''), key='test_att_url')
@@ -289,21 +289,37 @@ if cur == 1:
                 if not test_email:
                     st.warning('メールアドレスを入力してください')
                 else:
-                    body = fill_template(BODY_WINNER, 'テスト太郎', '5/9(土) 13:00〜14:00', 'A-001', uf)
-                    if send_one(test_email, '【テスト】' + SUBJECT_WINNER, body):
-                        st.success(f'✅ テスト当選メールを {test_email} に送信しました')
-                    else:
-                        st.error('❌ 送信に失敗しました')
+                    try:
+                        sheet_winners = load_winners_from_sheets()
+                        id1 = next((w for w in sheet_winners if w['checkin_id'] == '1'), None)
+                        if id1:
+                            body = fill_template(BODY_WINNER, id1['name'], id1['slot'], id1['checkin_id'], uf)
+                            if send_one(test_email, '【テスト】' + SUBJECT_WINNER, body):
+                                st.success(f'✅ テスト当選メールを {test_email} に送信しました（{id1["name"]}のデータ）')
+                            else:
+                                st.error('❌ 送信に失敗しました')
+                        else:
+                            st.error('スプシにID 1の当選者が見つかりません')
+                    except Exception as e:
+                        st.error(f'スプシ読み込みエラー: {e}')
         with test_cols[1]:
             if st.button('🧪 落選メール テスト送信', key='test_loser_1'):
                 if not test_email:
                     st.warning('メールアドレスを入力してください')
                 else:
-                    body = fill_template(BODY_LOSER, 'テスト太郎')
-                    if send_one(test_email, '【テスト】' + SUBJECT_LOSER, body):
-                        st.success(f'✅ テスト落選メールを {test_email} に送信しました')
-                    else:
-                        st.error('❌ 送信に失敗しました')
+                    try:
+                        sheet_losers = load_losers_from_sheets()
+                        if sheet_losers:
+                            loser = sheet_losers[0]
+                            body = fill_template(BODY_LOSER, loser['name'])
+                            if send_one(test_email, '【テスト】' + SUBJECT_LOSER, body):
+                                st.success(f'✅ テスト落選メールを {test_email} に送信しました（{loser["name"]}のデータ）')
+                            else:
+                                st.error('❌ 送信に失敗しました')
+                        else:
+                            st.error('スプシに落選者が見つかりません')
+                    except Exception as e:
+                        st.error(f'スプシ読み込みエラー: {e}')
 
     # イベント設定
     with st.expander('📅 イベント設定（日程・時間帯）', expanded=False):

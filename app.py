@@ -105,6 +105,7 @@ def fill_template(body, name, slot='', checkin_id='', url_fields=None):
     return result
 
 def send_one(to_email, subject, body):
+    """メール送信。成功時はResend ID (str)を返す。失敗時はNoneを返す。"""
     # テキストをHTMLに変換（開封トラッキング用）
     html_body = body.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>\n')
     html_body = f'<div style="font-family: sans-serif; font-size: 14px; line-height: 1.8;">{html_body}</div>'
@@ -113,10 +114,17 @@ def send_one(to_email, subject, body):
         headers={'Authorization': f'Bearer {RESEND_API_KEY}', 'Content-Type': 'application/json'},
         json={'from': FROM_EMAIL, 'to': [to_email], 'subject': subject, 'text': body, 'html': html_body},
     )
-    return resp.status_code == 200
+    if resp.status_code == 200:
+        try:
+            return resp.json().get('id')
+        except Exception:
+            return 'ok'  # IDが取れなくても成功扱い
+    return None
 
-def send_bulk(recipients, subject, body_tpl, url_fields=None, is_loser=False):
+def send_bulk(recipients, subject, body_tpl, url_fields=None, is_loser=False, sheet_name=None):
+    """一括メール送信。sheet_nameを指定するとスプシに送信済・ResendIDを記録する。"""
     ok, ng, errors = 0, 0, []
+    send_results = []  # [(email, resend_id), ...]
     bar  = st.progress(0)
     info = st.empty()
     total = len(recipients)
@@ -128,8 +136,10 @@ def send_bulk(recipients, subject, body_tpl, url_fields=None, is_loser=False):
         if not email or not name:
             continue
         body = fill_template(body_tpl, name, slot, cid, url_fields)
-        if send_one(email, subject, body):
+        resend_id = send_one(email, subject, body)
+        if resend_id:
             ok += 1
+            send_results.append((email, resend_id))
         else:
             ng += 1
             errors.append(f'{name} <{email}>')
@@ -137,45 +147,109 @@ def send_bulk(recipients, subject, body_tpl, url_fields=None, is_loser=False):
         info.caption(f'送信中… {i+1}/{total}')
         time.sleep(0.1)
     bar.empty(); info.empty()
+
+    # スプシに送信記録を書き込む
+    if sheet_name and send_results:
+        try:
+            _record_send_results(sheet_name, send_results)
+        except Exception as e:
+            st.warning(f'送信記録のスプシ書き込みに失敗: {e}')
+
     return ok, ng, errors
 
+
+def _record_send_results(sheet_name, send_results):
+    """送信結果をスプシの送信済・ResendID列に記録する"""
+    from sheets_helper import read_sheet, update_cells, append_columns_if_missing, _col_letter
+    from datetime import datetime
+
+    # 必要な列を追加
+    append_columns_if_missing(SPREADSHEET_ID, sheet_name, ['送信済', 'ResendID', '配信状況'])
+
+    # ヘッダーを再読み込みして列位置を特定
+    rows = read_sheet(SPREADSHEET_ID, sheet_name)
+    if not rows:
+        return
+    header = rows[0]
+    email_col_idx = header.index('メールアドレス') if 'メールアドレス' in header else None
+    sent_col_idx = header.index('送信済') if '送信済' in header else None
+    resend_col_idx = header.index('ResendID') if 'ResendID' in header else None
+    if email_col_idx is None or sent_col_idx is None or resend_col_idx is None:
+        return
+
+    # メールアドレス → 行番号のマッピング（1-indexed, ヘッダーが行1）
+    email_to_rows = {}
+    for row_idx, row in enumerate(rows[1:], start=2):
+        if len(row) > email_col_idx:
+            email_to_rows[row[email_col_idx].strip().lower()] = row_idx
+
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
+    sent_letter = _col_letter(sent_col_idx)
+    resend_letter = _col_letter(resend_col_idx)
+
+    for email, resend_id in send_results:
+        row_num = email_to_rows.get(email.strip().lower())
+        if row_num:
+            update_cells(SPREADSHEET_ID, sheet_name,
+                         f'!{sent_letter}{row_num}:{resend_letter}{row_num}',
+                         [[f'✓ {timestamp}', str(resend_id)]])
+
+def _parse_winners_rows(rows):
+    """スプシの行データを当選者dictリストに変換する"""
+    if not rows:
+        return []
+    header = rows[0]
+    idx = {h: i for i, h in enumerate(header)}
+    winners = []
+    for r in rows[1:]:
+        while len(r) < len(header):
+            r.append('')
+        email = r[idx.get('メールアドレス', -1)].strip()
+        if not email:
+            continue
+        winners.append({
+            'name': r[idx.get('氏名', -1)],
+            'email': email,
+            'slot': r[idx.get('当選枠', -1)],
+            'checkin_id': r[idx.get('チェックインID', -1)],
+            'status': r[idx.get('ステータス', -1)],
+        })
+    return winners
+
+
 def load_winners_from_sheets():
-    """スプシから当選者を読み込む"""
-    from sheets_helper import _api
-    import urllib.parse
-    base = f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}"
+    """スプシから当選者を読み込む（全日）"""
     winners = []
     for sheet_name in ['当選リスト 5月9日', '当選リスト 5月10日']:
-        encoded = urllib.parse.quote(sheet_name)
-        data = _api('GET', f'{base}/values/{encoded}')
-        rows = data.get('values', [])
-        if not rows:
-            continue
-        header = rows[0]
-        idx = {h: i for i, h in enumerate(header)}
-        for r in rows[1:]:
-            while len(r) < len(header):
-                r.append('')
-            email = r[idx.get('メールアドレス', -1)].strip()
-            if not email:
-                continue
-            winners.append({
-                'name': r[idx.get('氏名', -1)],
-                'email': email,
-                'slot': r[idx.get('当選枠', -1)],
-                'checkin_id': r[idx.get('チェックインID', -1)],
-                'status': r[idx.get('ステータス', -1)],
-            })
+        winners.extend(load_winners_from_sheets_by_name(sheet_name))
     return winners
+
+
+def load_winners_from_sheets_by_name(sheet_name):
+    """特定のシートから当選者を読み込む"""
+    from sheets_helper import read_sheet
+    rows = read_sheet(SPREADSHEET_ID, sheet_name)
+    return _parse_winners_rows(rows)
+
+def _split_by_day(winners):
+    """当選者リストを日付別のシート名でグループ化する"""
+    from collections import defaultdict
+    by_sheet = defaultdict(list)
+    for w in winners:
+        slot = w.get('slot', '')
+        if '5/9' in slot:
+            by_sheet['当選リスト 5月9日'].append(w)
+        elif '5/10' in slot:
+            by_sheet['当選リスト 5月10日'].append(w)
+        else:
+            by_sheet['当選リスト 5月9日'].append(w)  # フォールバック
+    return dict(by_sheet)
+
 
 def load_losers_from_sheets():
     """スプシから落選者を読み込む"""
-    from sheets_helper import _api
-    import urllib.parse
-    base = f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}"
-    encoded = urllib.parse.quote('落選リスト')
-    data = _api('GET', f'{base}/values/{encoded}')
-    rows = data.get('values', [])
+    from sheets_helper import read_sheet
+    rows = read_sheet(SPREADSHEET_ID, '落選リスト')
     if not rows:
         return []
     header = rows[0]
@@ -583,15 +657,19 @@ if cur == 1:
                     st.warning('出欠フォームURLを入力してください')
                 else:
                     try:
-                        sheet_winners = load_winners_from_sheets()
-                        st.caption(f'スプシから{len(sheet_winners)}名の当選者を読み込みました')
-                        ok, ng, errs = send_bulk(sheet_winners, SUBJECT_WINNER, BODY_WINNER, uf)
-                        if ng == 0:
-                            st.success(f'✅ {ok}件送信完了')
+                        total_ok, total_ng, total_errs = 0, 0, []
+                        for sn in ['当選リスト 5月9日', '当選リスト 5月10日']:
+                            sw = load_winners_from_sheets_by_name(sn)
+                            if sw:
+                                st.caption(f'{sn}: {len(sw)}名')
+                                o, n, e = send_bulk(sw, SUBJECT_WINNER, BODY_WINNER, uf, sheet_name=sn)
+                                total_ok += o; total_ng += n; total_errs += e
+                        if total_ng == 0:
+                            st.success(f'✅ {total_ok}件送信完了')
                             st.session_state.sent_modes = sent + ['winner']
                             persist(); st.rerun()
                         else:
-                            st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+                            st.error(f'失敗 {total_ng}件: ' + ', '.join(total_errs))
                     except Exception as e:
                         st.error(f'スプシ読み込みエラー: {e}')
         else:
@@ -602,7 +680,7 @@ if cur == 1:
                 try:
                     sheet_losers = load_losers_from_sheets()
                     st.caption(f'スプシから{len(sheet_losers)}名の落選者を読み込みました')
-                    ok, ng, errs = send_bulk(sheet_losers, SUBJECT_LOSER, BODY_LOSER, is_loser=True)
+                    ok, ng, errs = send_bulk(sheet_losers, SUBJECT_LOSER, BODY_LOSER, is_loser=True, sheet_name='落選リスト')
                     if ng == 0:
                         st.success(f'✅ {ok}件送信完了')
                         st.session_state.sent_modes = sent + ['loser']
@@ -766,13 +844,16 @@ elif cur == 3:
         sent = st.session_state.sent_modes
         if 'winner2' not in sent:
             if st.button('📨 二次当選メール送信', type='primary', disabled=not mail_unlock3):
-                ok, ng, errs = send_bulk(sw, SUBJECT_WINNER_2ND, BODY_WINNER_2ND)
-                if ng == 0:
-                    st.success(f'✅ {ok}件送信完了')
+                total_ok, total_ng, total_errs = 0, 0, []
+                for sn, day_sw in _split_by_day(sw).items():
+                    o, n, e = send_bulk(day_sw, SUBJECT_WINNER_2ND, BODY_WINNER_2ND, sheet_name=sn)
+                    total_ok += o; total_ng += n; total_errs += e
+                if total_ng == 0:
+                    st.success(f'✅ {total_ok}件送信完了')
                     st.session_state.sent_modes = sent + ['winner2']
                     persist(); st.rerun()
                 else:
-                    st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+                    st.error(f'失敗 {total_ng}件: ' + ', '.join(total_errs))
         else:
             st.success('✅ 二次当選メール送信済み')
 
@@ -812,13 +893,16 @@ elif cur == 4:
             if not uf.get('presale_url'):
                 st.warning('先行販売URLを入力してください')
             else:
-                ok, ng, errs = send_bulk(all_winners, SUBJECT_REMINDER, BODY_REMINDER, uf)
-                if ng == 0:
-                    st.success(f'✅ {ok}件送信完了')
+                total_ok, total_ng, total_errs = 0, 0, []
+                for sn, day_w in _split_by_day(all_winners).items():
+                    o, n, e = send_bulk(day_w, SUBJECT_REMINDER, BODY_REMINDER, uf, sheet_name=sn)
+                    total_ok += o; total_ng += n; total_errs += e
+                if total_ng == 0:
+                    st.success(f'✅ {total_ok}件送信完了')
                     st.session_state.sent_modes = sent + ['reminder']
                     persist(); st.rerun()
                 else:
-                    st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+                    st.error(f'失敗 {total_ng}件: ' + ', '.join(total_errs))
     else:
         st.success('✅ 直前案内メール送信済み')
 
@@ -829,18 +913,168 @@ elif cur == 4:
             if not uf.get('survey_url'):
                 st.warning('アンケートURLを入力してください')
             else:
-                ok, ng, errs = send_bulk(all_winners, SUBJECT_THANKS, BODY_THANKS, uf)
-                if ng == 0:
-                    st.success(f'✅ {ok}件送信完了')
+                total_ok, total_ng, total_errs = 0, 0, []
+                for sn, day_w in _split_by_day(all_winners).items():
+                    o, n, e = send_bulk(day_w, SUBJECT_THANKS, BODY_THANKS, uf, sheet_name=sn)
+                    total_ok += o; total_ng += n; total_errs += e
+                if total_ng == 0:
+                    st.success(f'✅ {total_ok}件送信完了')
                     st.session_state.sent_modes = sent + ['thanks']
                     persist(); st.rerun()
                 else:
-                    st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+                    st.error(f'失敗 {total_ng}件: ' + ', '.join(total_errs))
     else:
         st.success('✅ お礼メール送信済み')
 
     if st.button('← Phase 3に戻る'):
         st.session_state.phase = 3; persist(); st.rerun()
+
+# ==============================
+# Delivery status check (Feature 2)
+# ==============================
+
+def check_delivery_status():
+    """全シートのResendIDを読み取り、Resend APIで配信状況を取得してスプシに書き戻す"""
+    from sheets_helper import read_sheet, update_cells, append_columns_if_missing, _col_letter
+
+    all_sheets = ['当選リスト 5月9日', '当選リスト 5月10日', '落選リスト']
+    total_checked = 0
+    total_updated = 0
+
+    bar = st.progress(0)
+    info = st.empty()
+
+    for sheet_idx, sheet_name in enumerate(all_sheets):
+        try:
+            append_columns_if_missing(SPREADSHEET_ID, sheet_name, ['送信済', 'ResendID', '配信状況'])
+            rows = read_sheet(SPREADSHEET_ID, sheet_name)
+            if not rows:
+                continue
+            header = rows[0]
+            resend_col = header.index('ResendID') if 'ResendID' in header else None
+            status_col = header.index('配信状況') if '配信状況' in header else None
+            if resend_col is None or status_col is None:
+                continue
+
+            status_letter = _col_letter(status_col)
+
+            for row_idx, row in enumerate(rows[1:], start=2):
+                if len(row) <= resend_col:
+                    continue
+                resend_id = row[resend_col].strip()
+                if not resend_id or resend_id == 'ok':
+                    continue
+
+                total_checked += 1
+                try:
+                    resp = requests.get(
+                        f'https://api.resend.com/emails/{resend_id}',
+                        headers={'Authorization': f'Bearer {RESEND_API_KEY}'},
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        # Resend API returns last_event field
+                        email_status = data.get('last_event', data.get('status', 'unknown'))
+                        update_cells(SPREADSHEET_ID, sheet_name,
+                                     f'!{status_letter}{row_idx}:{status_letter}{row_idx}',
+                                     [[email_status]])
+                        total_updated += 1
+                    time.sleep(0.05)  # レート制限対策
+                except Exception:
+                    pass
+
+                info.caption(f'{sheet_name}: 確認中… {row_idx - 1}/{len(rows) - 1}')
+
+        except Exception as e:
+            st.warning(f'{sheet_name} の処理でエラー: {e}')
+
+        bar.progress((sheet_idx + 1) / len(all_sheets))
+
+    bar.empty(); info.empty()
+    return total_checked, total_updated
+
+
+# ==============================
+# Google Form attendance sync (Feature 3)
+# ==============================
+
+FORM_RESPONSES_SHEET_NAME = 'フォームの回答 1'  # Googleフォームのデフォルト回答シート名
+
+def sync_attendance_from_form():
+    """Googleフォームの回答からスプシの出欠列を更新する"""
+    from sheets_helper import read_sheet, update_cells, _col_letter
+
+    # フォーム回答を読み込む
+    form_rows = read_sheet(SPREADSHEET_ID, FORM_RESPONSES_SHEET_NAME)
+    if not form_rows or len(form_rows) < 2:
+        return 0, 'フォーム回答が見つかりません'
+
+    form_header = form_rows[0]
+    # フォーム回答のカラム名を自動検出
+    form_idx = {h: i for i, h in enumerate(form_header)}
+
+    # チェックインID列とメールアドレス列を探す
+    checkin_id_col = None
+    email_col = None
+    attendance_col = None
+    for h, i in form_idx.items():
+        h_lower = h.lower().strip()
+        if 'チェックインid' in h_lower or 'チェックイン' in h_lower or 'checkin' in h_lower:
+            checkin_id_col = i
+        if 'メールアドレス' in h_lower or 'メール' in h_lower or 'email' in h_lower:
+            email_col = i
+        if '参加' in h_lower or '出欠' in h_lower or '出席' in h_lower:
+            attendance_col = i
+
+    if attendance_col is None:
+        return 0, '出欠列がフォーム回答に見つかりません'
+
+    # フォーム回答をパース: (checkin_id, email) -> 出欠
+    responses = {}
+    for r in form_rows[1:]:
+        while len(r) < len(form_header):
+            r.append('')
+        cid = r[checkin_id_col].strip() if checkin_id_col is not None else ''
+        em = r[email_col].strip().lower() if email_col is not None else ''
+        att = r[attendance_col].strip()
+        if cid:
+            responses[('cid', cid)] = att
+        if em:
+            responses[('email', em)] = att
+
+    # 当選者シートの出欠列を更新
+    updated = 0
+    for sheet_name in ['当選リスト 5月9日', '当選リスト 5月10日']:
+        rows = read_sheet(SPREADSHEET_ID, sheet_name)
+        if not rows:
+            continue
+        header = rows[0]
+        idx = {h: i for i, h in enumerate(header)}
+        cid_col_idx = idx.get('チェックインID')
+        email_col_idx = idx.get('メールアドレス')
+        att_col_idx = idx.get('出欠')
+        if att_col_idx is None:
+            continue
+
+        att_letter = _col_letter(att_col_idx)
+
+        for row_idx, row in enumerate(rows[1:], start=2):
+            while len(row) < len(header):
+                row.append('')
+            cid = row[cid_col_idx].strip() if cid_col_idx is not None else ''
+            em = row[email_col_idx].strip().lower() if email_col_idx is not None else ''
+
+            # チェックインIDで照合 → メールで照合
+            att_value = responses.get(('cid', cid)) or responses.get(('email', em))
+            if att_value:
+                update_cells(SPREADSHEET_ID, sheet_name,
+                             f'!{att_letter}{row_idx}:{att_letter}{row_idx}',
+                             [[att_value]])
+                updated += 1
+                time.sleep(0.02)
+
+    return updated, None
+
 
 # ==============================
 # Sidebar
@@ -852,6 +1086,29 @@ with st.sidebar:
     st.caption(f'一次当選: {len(st.session_state.winners)}名')
     st.caption(f'二次当選: {len(st.session_state.get("second_winners", []))}名')
     st.caption(f'送信済み: {", ".join(st.session_state.sent_modes) or "なし"}')
+    st.divider()
+
+    # 配信状況確認ボタン (Feature 2)
+    if st.button('📊 配信状況確認', key='check_delivery'):
+        with st.spinner('Resend APIから配信状況を取得中…'):
+            try:
+                checked, updated = check_delivery_status()
+                st.success(f'✅ {checked}件確認 / {updated}件更新')
+            except Exception as e:
+                st.error(f'エラー: {e}')
+
+    # 出欠同期ボタン (Feature 3)
+    if st.button('📋 出欠フォーム同期', key='sync_attendance'):
+        with st.spinner('Googleフォームの回答を同期中…'):
+            try:
+                updated, err = sync_attendance_from_form()
+                if err:
+                    st.error(err)
+                else:
+                    st.success(f'✅ {updated}件の出欠を更新しました')
+            except Exception as e:
+                st.error(f'エラー: {e}')
+
     st.divider()
     if st.button('🔄 新しいイベントでリセット', type='secondary'):
         if os.path.exists(STATE_FILE):

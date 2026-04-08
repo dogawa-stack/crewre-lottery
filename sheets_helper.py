@@ -125,3 +125,53 @@ def write_sheet(spreadsheet_id, sheet_name, headers, rows):
     ]
     _api("POST", f"{base}:batchUpdate", {"requests": requests})
     return sheet_id
+
+
+def read_sheet(spreadsheet_id, sheet_name, range_suffix=''):
+    """シートからデータを読み取る。range_suffix例: '!A:Z'"""
+    encoded = urllib.parse.quote(sheet_name)
+    range_str = encoded + range_suffix if range_suffix else encoded
+    base = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}"
+    data = _api('GET', f'{base}/values/{range_str}')
+    return data.get('values', [])
+
+
+def update_cells(spreadsheet_id, sheet_name, range_suffix, values):
+    """シートの特定範囲にデータを書き込む（既存データの部分更新用）
+    range_suffix例: '!J2:K2'
+    values例: [['✓ 2026-04-07 12:00', 're_abc123']]
+    """
+    encoded = urllib.parse.quote(sheet_name)
+    base = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}"
+    _api('PUT', f'{base}/values/{encoded}{range_suffix}?valueInputOption=USER_ENTERED', {
+        'values': values
+    })
+
+
+def append_columns_if_missing(spreadsheet_id, sheet_name, new_columns):
+    """シートのヘッダー行に不足している列を追加する"""
+    rows = read_sheet(spreadsheet_id, sheet_name, '!1:1')
+    if not rows:
+        return
+    header = rows[0]
+    missing = [c for c in new_columns if c not in header]
+    if not missing:
+        return
+    # 既存ヘッダーの末尾に追加
+    start_col_idx = len(header)
+    start_col_letter = _col_letter(start_col_idx)
+    end_col_letter = _col_letter(start_col_idx + len(missing) - 1)
+    update_cells(spreadsheet_id, sheet_name,
+                 f'!{start_col_letter}1:{end_col_letter}1',
+                 [missing])
+
+
+def _col_letter(idx):
+    """0-based index をスプレッドシートの列文字に変換 (0->A, 25->Z, 26->AA)"""
+    result = ''
+    while True:
+        result = chr(ord('A') + idx % 26) + result
+        idx = idx // 26 - 1
+        if idx < 0:
+            break
+    return result

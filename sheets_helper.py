@@ -41,7 +41,11 @@ def get_access_token():
         'grant_type': 'refresh_token',
     }).encode()
     req = urllib.request.Request('https://oauth2.googleapis.com/token', data=data)
-    resp = urllib.request.urlopen(req)
+    try:
+        resp = urllib.request.urlopen(req)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()[:500]
+        raise Exception(f"トークン取得失敗 ({e.code}): {body}\nclient_id: {creds['client_id'][:20]}...\nrefresh_token: {creds['refresh_token'][:30]}...")
     result = json.loads(resp.read())
     _token_cache['token'] = result['access_token']
     _token_cache['expires'] = now + 3000

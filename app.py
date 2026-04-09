@@ -649,64 +649,80 @@ if cur == 1:
     mail_unlock = st.checkbox('🔓 メール送信のロックを解除する（本番のみ）', value=False, key='mail_unlock_1')
 
     sent = st.session_state.sent_modes
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        if 'winner_09' not in sent:
-            if st.button('📨 当選 5/9（140名）', type='primary', key='bw09', disabled=not mail_unlock):
-                if not uf.get('attendance_url'):
-                    st.warning('出欠フォームURLを入力してください')
+
+    # Step 1: テストバッチ ID 1〜15
+    if 'batch_test' not in sent:
+        if st.button('📨 ① テストバッチ ID 1〜15（15名）', type='primary', key='batch_test', disabled=not mail_unlock):
+            try:
+                sw = load_winners_from_sheets_by_name('当選リスト 5月9日')
+                batch = [w for w in sw if w.get('checkin_id') and int(w['checkin_id']) <= 15]
+                st.caption(f'{len(batch)}名を送信')
+                ok, ng, errs = send_bulk(batch, SUBJECT_WINNER, BODY_WINNER, uf, sheet_name='当選リスト 5月9日')
+                if ng == 0:
+                    st.success(f'✅ {ok}件送信完了')
+                    st.session_state.sent_modes = sent + ['batch_test']
+                    persist(); st.rerun()
                 else:
-                    try:
-                        sw = load_winners_from_sheets_by_name('当選リスト 5月9日')
-                        st.caption(f'スプシから{len(sw)}名を読み込み')
-                        ok, ng, errs = send_bulk(sw, SUBJECT_WINNER, BODY_WINNER, uf, sheet_name='当選リスト 5月9日')
-                        if ng == 0:
-                            st.success(f'✅ {ok}件送信完了')
-                            st.session_state.sent_modes = sent + ['winner_09']
-                            persist(); st.rerun()
-                        else:
-                            st.error(f'失敗 {ng}件: ' + ', '.join(errs))
-                    except Exception as e:
-                        st.error(f'エラー: {e}')
-        else:
-            st.success('✅ 5/9 当選送信済み')
-    with c2:
-        if 'winner_10' not in sent:
-            if st.button('📨 当選 5/10（160名）', type='primary', key='bw10', disabled=not mail_unlock or 'winner_09' not in sent):
-                if not uf.get('attendance_url'):
-                    st.warning('出欠フォームURLを入力してください')
+                    st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+            except Exception as e:
+                st.error(f'エラー: {e}')
+    else:
+        st.success('✅ ① テストバッチ送信済み')
+
+    # Step 2: 5/9 残り ID 16〜140
+    if 'winner_09' not in sent:
+        if st.button('📨 ② 5/9 残り ID 16〜140（125名）', type='primary', key='bw09', disabled=not mail_unlock or 'batch_test' not in sent):
+            try:
+                sw = load_winners_from_sheets_by_name('当選リスト 5月9日')
+                batch = [w for w in sw if w.get('checkin_id') and int(w['checkin_id']) >= 16]
+                st.caption(f'{len(batch)}名を送信')
+                ok, ng, errs = send_bulk(batch, SUBJECT_WINNER, BODY_WINNER, uf, sheet_name='当選リスト 5月9日')
+                if ng == 0:
+                    st.success(f'✅ {ok}件送信完了')
+                    st.session_state.sent_modes = sent + ['winner_09']
+                    persist(); st.rerun()
                 else:
-                    try:
-                        sw = load_winners_from_sheets_by_name('当選リスト 5月10日')
-                        st.caption(f'スプシから{len(sw)}名を読み込み')
-                        ok, ng, errs = send_bulk(sw, SUBJECT_WINNER, BODY_WINNER, uf, sheet_name='当選リスト 5月10日')
-                        if ng == 0:
-                            st.success(f'✅ {ok}件送信完了')
-                            st.session_state.sent_modes = sent + ['winner_10']
-                            persist(); st.rerun()
-                        else:
-                            st.error(f'失敗 {ng}件: ' + ', '.join(errs))
-                    except Exception as e:
-                        st.error(f'エラー: {e}')
-        else:
-            st.success('✅ 5/10 当選送信済み')
-    with c3:
-        if 'loser' not in sent:
-            if st.button('📨 落選（417名）', key='bl1', disabled=not mail_unlock or 'winner_10' not in sent):
-                try:
-                    sheet_losers = load_losers_from_sheets()
-                    st.caption(f'スプシから{len(sheet_losers)}名を読み込み')
-                    ok, ng, errs = send_bulk(sheet_losers, SUBJECT_LOSER, BODY_LOSER, is_loser=True, sheet_name='落選リスト')
-                    if ng == 0:
-                        st.success(f'✅ {ok}件送信完了')
-                        st.session_state.sent_modes = sent + ['loser']
-                        persist(); st.rerun()
-                    else:
-                        st.error(f'失敗 {ng}件: ' + ', '.join(errs))
-                except Exception as e:
-                    st.error(f'エラー: {e}')
-        else:
-            st.success('✅ 落選送信済み')
+                    st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+            except Exception as e:
+                st.error(f'エラー: {e}')
+    else:
+        st.success('✅ ② 5/9 当選送信済み')
+
+    # Step 3: 5/10 ID 141〜300
+    if 'winner_10' not in sent:
+        if st.button('📨 ③ 5/10 ID 141〜300（160名）', type='primary', key='bw10', disabled=not mail_unlock or 'winner_09' not in sent):
+            try:
+                sw = load_winners_from_sheets_by_name('当選リスト 5月10日')
+                st.caption(f'{len(sw)}名を送信')
+                ok, ng, errs = send_bulk(sw, SUBJECT_WINNER, BODY_WINNER, uf, sheet_name='当選リスト 5月10日')
+                if ng == 0:
+                    st.success(f'✅ {ok}件送信完了')
+                    st.session_state.sent_modes = sent + ['winner_10']
+                    persist(); st.rerun()
+                else:
+                    st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+            except Exception as e:
+                st.error(f'エラー: {e}')
+    else:
+        st.success('✅ ③ 5/10 当選送信済み')
+
+    # Step 4: 落選
+    if 'loser' not in sent:
+        if st.button('📨 ④ 落選（417名）', key='bl1', disabled=not mail_unlock or 'winner_10' not in sent):
+            try:
+                sheet_losers = load_losers_from_sheets()
+                st.caption(f'{len(sheet_losers)}名を送信')
+                ok, ng, errs = send_bulk(sheet_losers, SUBJECT_LOSER, BODY_LOSER, is_loser=True, sheet_name='落選リスト')
+                if ng == 0:
+                    st.success(f'✅ {ok}件送信完了')
+                    st.session_state.sent_modes = sent + ['loser']
+                    persist(); st.rerun()
+                else:
+                    st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+            except Exception as e:
+                st.error(f'エラー: {e}')
+    else:
+        st.success('✅ ④ 落選送信済み')
 
 # ==============================
 # PHASE 2: 出欠確認

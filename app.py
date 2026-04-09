@@ -706,13 +706,33 @@ if cur == 1:
     else:
         st.success('✅ ③ 5/10 当選送信済み')
 
-    # Step 4: 落選
-    if 'loser' not in sent:
-        if st.button('📨 ④ 落選（417名）', key='bl1', disabled=not mail_unlock or 'winner_10' not in sent):
+    # Step 4: 落選テストバッチ（最初の15名）
+    if 'loser_test' not in sent:
+        if st.button('📨 ④ 落選テスト（15名）', key='bl_test', disabled=not mail_unlock or 'winner_10' not in sent):
             try:
                 sheet_losers = load_losers_from_sheets()
-                st.caption(f'{len(sheet_losers)}名を送信')
-                ok, ng, errs = send_bulk(sheet_losers, SUBJECT_LOSER, BODY_LOSER, is_loser=True, sheet_name='落選リスト')
+                batch = sheet_losers[:15]
+                st.caption(f'{len(batch)}名を送信')
+                ok, ng, errs = send_bulk(batch, SUBJECT_LOSER, BODY_LOSER, is_loser=True, sheet_name='落選リスト')
+                if ng == 0:
+                    st.success(f'✅ {ok}件送信完了')
+                    st.session_state.sent_modes = sent + ['loser_test']
+                    persist(); st.rerun()
+                else:
+                    st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+            except Exception as e:
+                st.error(f'エラー: {e}')
+    else:
+        st.success('✅ ④ 落選テスト送信済み')
+
+    # Step 5: 落選残り
+    if 'loser' not in sent:
+        if st.button('📨 ⑤ 落選 残り（402名）', key='bl1', disabled=not mail_unlock or 'loser_test' not in sent):
+            try:
+                sheet_losers = load_losers_from_sheets()
+                batch = sheet_losers[15:]
+                st.caption(f'{len(batch)}名を送信')
+                ok, ng, errs = send_bulk(batch, SUBJECT_LOSER, BODY_LOSER, is_loser=True, sheet_name='落選リスト')
                 if ng == 0:
                     st.success(f'✅ {ok}件送信完了')
                     st.session_state.sent_modes = sent + ['loser']
@@ -722,7 +742,7 @@ if cur == 1:
             except Exception as e:
                 st.error(f'エラー: {e}')
     else:
-        st.success('✅ ④ 落選送信済み')
+        st.success('✅ ⑤ 落選送信済み')
 
 # ==============================
 # PHASE 2: 出欠確認

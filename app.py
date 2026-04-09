@@ -649,37 +649,53 @@ if cur == 1:
     mail_unlock = st.checkbox('🔓 メール送信のロックを解除する（本番のみ）', value=False, key='mail_unlock_1')
 
     sent = st.session_state.sent_modes
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     with c1:
-        if 'winner' not in sent:
-            if st.button('📨 当選メール送信', type='primary', key='bw1', disabled=not mail_unlock):
+        if 'winner_09' not in sent:
+            if st.button('📨 当選 5/9（140名）', type='primary', key='bw09', disabled=not mail_unlock):
                 if not uf.get('attendance_url'):
                     st.warning('出欠フォームURLを入力してください')
                 else:
                     try:
-                        total_ok, total_ng, total_errs = 0, 0, []
-                        for sn in ['当選リスト 5月9日', '当選リスト 5月10日']:
-                            sw = load_winners_from_sheets_by_name(sn)
-                            if sw:
-                                st.caption(f'{sn}: {len(sw)}名')
-                                o, n, e = send_bulk(sw, SUBJECT_WINNER, BODY_WINNER, uf, sheet_name=sn)
-                                total_ok += o; total_ng += n; total_errs += e
-                        if total_ng == 0:
-                            st.success(f'✅ {total_ok}件送信完了')
-                            st.session_state.sent_modes = sent + ['winner']
+                        sw = load_winners_from_sheets_by_name('当選リスト 5月9日')
+                        st.caption(f'スプシから{len(sw)}名を読み込み')
+                        ok, ng, errs = send_bulk(sw, SUBJECT_WINNER, BODY_WINNER, uf, sheet_name='当選リスト 5月9日')
+                        if ng == 0:
+                            st.success(f'✅ {ok}件送信完了')
+                            st.session_state.sent_modes = sent + ['winner_09']
                             persist(); st.rerun()
                         else:
-                            st.error(f'失敗 {total_ng}件: ' + ', '.join(total_errs))
+                            st.error(f'失敗 {ng}件: ' + ', '.join(errs))
                     except Exception as e:
-                        st.error(f'スプシ読み込みエラー: {e}')
+                        st.error(f'エラー: {e}')
         else:
-            st.success('✅ 当選メール送信済み')
+            st.success('✅ 5/9 当選送信済み')
     with c2:
+        if 'winner_10' not in sent:
+            if st.button('📨 当選 5/10（160名）', type='primary', key='bw10', disabled=not mail_unlock or 'winner_09' not in sent):
+                if not uf.get('attendance_url'):
+                    st.warning('出欠フォームURLを入力してください')
+                else:
+                    try:
+                        sw = load_winners_from_sheets_by_name('当選リスト 5月10日')
+                        st.caption(f'スプシから{len(sw)}名を読み込み')
+                        ok, ng, errs = send_bulk(sw, SUBJECT_WINNER, BODY_WINNER, uf, sheet_name='当選リスト 5月10日')
+                        if ng == 0:
+                            st.success(f'✅ {ok}件送信完了')
+                            st.session_state.sent_modes = sent + ['winner_10']
+                            persist(); st.rerun()
+                        else:
+                            st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+                    except Exception as e:
+                        st.error(f'エラー: {e}')
+        else:
+            st.success('✅ 5/10 当選送信済み')
+    with c3:
         if 'loser' not in sent:
-            if st.button('📨 落選メール送信', key='bl1', disabled=not mail_unlock):
+            if st.button('📨 落選（417名）', key='bl1', disabled=not mail_unlock or 'winner_10' not in sent):
                 try:
                     sheet_losers = load_losers_from_sheets()
-                    st.caption(f'スプシから{len(sheet_losers)}名の落選者を読み込みました')
+                    st.caption(f'スプシから{len(sheet_losers)}名を読み込み')
                     ok, ng, errs = send_bulk(sheet_losers, SUBJECT_LOSER, BODY_LOSER, is_loser=True, sheet_name='落選リスト')
                     if ng == 0:
                         st.success(f'✅ {ok}件送信完了')
@@ -688,9 +704,9 @@ if cur == 1:
                     else:
                         st.error(f'失敗 {ng}件: ' + ', '.join(errs))
                 except Exception as e:
-                    st.error(f'スプシ読み込みエラー: {e}')
+                    st.error(f'エラー: {e}')
         else:
-            st.success('✅ 落選メール送信済み')
+            st.success('✅ 落選送信済み')
 
 # ==============================
 # PHASE 2: 出欠確認

@@ -23,6 +23,7 @@ from email_templates import (
     SUBJECT_WINNER_2ND, BODY_WINNER_2ND,
     SUBJECT_REMINDER,   BODY_REMINDER,
     SUBJECT_THANKS,     BODY_THANKS,
+    SUBJECT_ATTENDANCE_REMINDER, BODY_ATTENDANCE_REMINDER,
 )
 
 SPREADSHEET_ID = '1bSdZNp9eKd0LSW31A0BXENpOTiYYsR1K0DgHrzfE8h0'
@@ -743,6 +744,57 @@ if cur == 1:
                 st.error(f'エラー: {e}')
     else:
         st.success('✅ ⑤ 落選送信済み')
+
+    # Step 6: 出欠リマインド
+    st.divider()
+    st.subheader('出欠リマインドメール')
+    if 'attendance_reminder' not in sent:
+        if st.button('📨 ⑥ 出欠リマインド（未回答者）', key='att_remind', disabled=not mail_unlock):
+            try:
+                # 回答済みを取得
+                from sheets_helper import read_sheet as _read_sheet
+                form_rows = _read_sheet('17TsGrXALKimuueOsJfwDEbm9xytTjf3CZkOfkHws6Fg', 'フォームの回答 1')
+                fh = form_rows[0]
+                fe = fh.index('メールアドレス')
+                fn = next(i for i, h in enumerate(fh) if 'お名前' in h)
+                answered_e = set()
+                answered_n = set()
+                for r in form_rows[1:]:
+                    while len(r) < len(fh): r.append('')
+                    answered_e.add(r[fe].strip().lower())
+                    answered_n.add(''.join(r[fn].split()).lower())
+
+                # 未回答者を抽出してリマインド送信
+                unanswered = []
+                for sn in ['当選リスト 5月9日', '当選リスト 5月10日']:
+                    sw = load_winners_from_sheets_by_name(sn)
+                    for w in sw:
+                        if w['email'].lower() not in answered_e and ''.join(w['name'].split()).lower() not in answered_n:
+                            unanswered.append(w)
+
+                st.caption(f'未回答者 {len(unanswered)}名に送信')
+                ok, ng, errs = send_bulk(unanswered, SUBJECT_ATTENDANCE_REMINDER, BODY_ATTENDANCE_REMINDER, is_loser=True, sheet_name='未回答リスト')
+                if ng == 0:
+                    st.success(f'✅ {ok}件送信完了')
+                    st.session_state.sent_modes = sent + ['attendance_reminder']
+                    persist(); st.rerun()
+                else:
+                    st.error(f'失敗 {ng}件: ' + ', '.join(errs))
+            except Exception as e:
+                st.error(f'エラー: {e}')
+    else:
+        st.success('✅ ⑥ 出欠リマインド送信済み')
+
+    # テスト送信（リマインド）
+    with st.expander('🧪 リマインドテスト送信', expanded=False):
+        test_email_r = st.text_input('送信先メールアドレス', value='d.ogawa@modern-times.co', key='test_email_remind')
+        if st.button('🧪 リマインドメール テスト送信', key='test_remind'):
+            if test_email_r:
+                body = fill_template(BODY_ATTENDANCE_REMINDER, 'テスト太郎')
+                if send_one(test_email_r, '【テスト】' + SUBJECT_ATTENDANCE_REMINDER, body):
+                    st.success(f'✅ テストリマインドを {test_email_r} に送信しました')
+                else:
+                    st.error('❌ 送信失敗')
 
 # ==============================
 # PHASE 2: 出欠確認

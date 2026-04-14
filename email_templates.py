@@ -147,7 +147,7 @@ crewreスタッフ\
 # 出欠確認リマインドメール
 # ==============================
 
-SUBJECT_ATTENDANCE_REMINDER = "【crewre pop up store】出欠ご回答のお願い（リマインド）"
+SUBJECT_ATTENDANCE_REMINDER = "【crewre pop up store】参加可否ご回答のお願い"
 
 BODY_ATTENDANCE_REMINDER = """\
 {{Name}} 様
